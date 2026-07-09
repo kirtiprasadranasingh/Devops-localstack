@@ -37,7 +37,7 @@ spec:
       serviceAccountName: kestra-server
       containers:
         - name: kestra
-          image: docker.io/kestra/kestra:latest
+          image: docker.io/kestra/kestra:v0.21.9
           imagePullPolicy: IfNotPresent
           args:
             - server
@@ -69,7 +69,7 @@ spec:
           startupProbe:
             tcpSocket:
               port: 8080
-            failureThreshold: 90
+            failureThreshold: 120
             periodSeconds: 10
           readinessProbe:
             tcpSocket:
