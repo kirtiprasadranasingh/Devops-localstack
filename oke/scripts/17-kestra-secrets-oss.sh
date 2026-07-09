@@ -28,7 +28,7 @@ kubectl set env deployment/"${DEPLOY}" -n "${NS}" \
 echo ""
 echo "==> Restarting Kestra (required for OSS secrets)"
 kubectl rollout restart deployment/"${DEPLOY}" -n "${NS}"
-kubectl rollout status deployment/"${DEPLOY}" -n "${NS}" --timeout=300s
+kubectl rollout status deployment/"${DEPLOY}" -n "${NS}" --timeout=600s
 
 if [[ "${REIMPORT}" -eq 1 ]]; then
   echo ""

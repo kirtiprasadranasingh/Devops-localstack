@@ -14,9 +14,22 @@ echo " Kestra bootstrap — fix 504 + lost flows"
 echo "=============================================="
 
 echo ""
-echo "==> 1/6 PVC + Kestra deployment (persistent flows)"
-kubectl apply -f "${ROOT}/oke/manifests/32-kestra-pvc.yaml"
-kubectl apply -f "${ROOT}/oke/manifests/30-kestra.yaml"
+echo "==> 1/6 Storage + Kestra deployment"
+SC=$(kubectl get storageclass -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")].metadata.name}' 2>/dev/null || true)
+if [[ -n "${SC}" ]]; then
+  echo "    Default StorageClass: ${SC} — using PVC"
+  kubectl apply -f "${ROOT}/oke/manifests/32-kestra-pvc.yaml"
+  kubectl apply -f "${ROOT}/oke/manifests/30-kestra.yaml"
+  sleep 5
+  DATA_STATUS=$(kubectl get pvc kestra-data -n "${NS}" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
+  if [[ "${DATA_STATUS}" != "Bound" ]]; then
+    echo "    PVC not bound — falling back to emptyDir"
+    bash "${SCRIPT_DIR}/20-kestra-recover.sh"
+  fi
+else
+  echo "    No default StorageClass — using emptyDir"
+  kubectl apply -f "${ROOT}/oke/manifests/30-kestra-emptydir.yaml"
+fi
 
 echo ""
 echo "==> 2/6 Ingress timeouts (fix 504 on large flow import)"
@@ -29,7 +42,7 @@ if [[ -n "${GITHUB_TOKEN:-}" && -n "${OCIR_USERNAME:-}" && -n "${OCIR_TOKEN:-}" 
   bash "${SCRIPT_DIR}/17-kestra-secrets-oss.sh" --no-reimport
 else
   echo "WARN: GITHUB_TOKEN / OCIR_* not set — skipping secrets step"
-  kubectl rollout status deployment/kestra -n "${NS}" --timeout=300s
+  kubectl rollout status deployment/kestra -n "${NS}" --timeout=600s
 fi
 
 echo ""
