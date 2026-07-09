@@ -2,9 +2,9 @@ id: oke-dagger-gitops-pipeline
 namespace: main
 
 description: |
-  Full OKE delivery pipeline — Enlight Lab client demo.
-  Clone GitHub → Dagger build → push OCIR → GitOps commit → ArgoCD sync → health check.
-  Required secrets: GITHUB_TOKEN, OCIR_USERNAME, OCIR_TOKEN
+  Full OKE pipeline — Dagger build, OCIR push, GitOps commit, ArgoCD sync, health check.
+  Secrets: GITHUB_TOKEN, OCIR_USERNAME, OCIR_TOKEN
+  Requires image: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v1
 
 labels:
   env: oke
@@ -26,6 +26,9 @@ inputs:
   - id: ocir_image_name
     type: STRING
     defaults: enlight-fastapi
+  - id: pipeline_image
+    type: STRING
+    defaults: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v1
   - id: gitops_manifest
     type: STRING
     defaults: oke/gitops/apps/fastapi/deployment.yaml
@@ -57,14 +60,15 @@ tasks:
         namespace: {{ inputs.k8s_namespace }}
       spec:
         backoffLimit: 0
-        ttlSecondsAfterFinished: 600
+        ttlSecondsAfterFinished: 900
+        activeDeadlineSeconds: 3600
         template:
           spec:
             serviceAccountName: kestra-runner
             restartPolicy: Never
             containers:
               - name: pipeline
-                image: python:3.12-alpine
+                image: {{ inputs.pipeline_image }}
                 env:
                   - name: GIT_BRANCH
                     value: "{{ inputs.git_branch }}"
@@ -84,30 +88,6 @@ tasks:
                     value: "{{ secret('OCIR_USERNAME') }}"
                   - name: OCIR_PASS
                     value: "{{ secret('OCIR_TOKEN') }}"
-                command:
-                  - /bin/sh
-                  - -ec
-                  - |
-                    apk add --no-cache curl bash git sed
-                    curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR=/usr/local/bin sh
-                    pip install --no-cache-dir dagger-io
-                    TAG="${IMAGE_TAG:-$(date +%Y%m%d-%H%M%S)}"
-                    FULL_IMAGE="${OCIR_REGISTRY}/${OCIR_IMAGE_NAME}:${TAG}"
-                    AUTH=$(printf '%s:%s' "$OCIR_USER" "$OCIR_PASS" | base64 | tr -d '\n')
-                    mkdir -p /root/.docker
-                    printf '{"auths":{"ap-mumbai-1.ocir.io":{"auth":"%s"}}}' "$AUTH" > /root/.docker/config.json
-                    REPO_URL="${GIT_REPO#https://}"
-                    git clone --depth 1 -b "$GIT_BRANCH" "https://x-access-token:${GITHUB_TOKEN}@${REPO_URL}" /work
-                    cd /work/sample-app/fastapi-minimal/dagger
-                    dagger call build-and-publish --registry="${OCIR_REGISTRY}" --image="${OCIR_IMAGE_NAME}" --tag="${TAG}"
-                    cd /work
-                    git config user.email "kestra@enlightlab.com"
-                    git config user.name "Kestra Enlight Lab"
-                    sed -i "s|image:.*|image: ${FULL_IMAGE}|" "$GITOPS_MANIFEST"
-                    git add "$GITOPS_MANIFEST"
-                    git commit -m "deploy: ${FULL_IMAGE} [kestra]" || true
-                    git push origin "$GIT_BRANCH"
-                    echo "DONE ${FULL_IMAGE}"
                 resources:
                   requests:
                     cpu: 500m
@@ -116,9 +96,9 @@ tasks:
                     cpu: 2000m
                     memory: 3Gi
 
-  - id: wait-argocd
+  - id: wait-pipeline
     type: io.kestra.plugin.core.flow.Sleep
-    duration: PT90S
+    duration: PT15M
 
   - id: rollout-status
     type: io.kestra.plugin.kubernetes.kubectl.Restart
@@ -139,7 +119,4 @@ tasks:
 
   - id: done
     type: io.kestra.plugin.core.log.Log
-    message: |
-      Enlight Lab deploy complete.
-      Image: {{ inputs.ocir_registry }}/{{ inputs.ocir_image_name }}
-      GitOps: {{ inputs.gitops_manifest }}
+    message: "Deploy complete via {{ inputs.pipeline_image }}"

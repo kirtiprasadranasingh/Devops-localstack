@@ -130,9 +130,9 @@ spec:
 
             limits:
 
-              cpu: 1000m
+              cpu: 2000m
 
-              memory: 2Gi
+              memory: 3Gi
 
           startupProbe:
 
