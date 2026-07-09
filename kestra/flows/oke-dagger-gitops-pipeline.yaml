@@ -65,6 +65,8 @@ tasks:
         template:
           spec:
             serviceAccountName: kestra-runner
+            imagePullSecrets:
+              - name: ocir-pull-secret
             restartPolicy: Never
             containers:
               - name: pipeline
