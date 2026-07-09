@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: PLACEHOLDER_OCIR_FASTAPI
+          image: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-fastapi:latest
           ports:
             - containerPort: 8000
           livenessProbe:

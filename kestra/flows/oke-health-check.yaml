@@ -5,10 +5,15 @@ description: |
   Minimal demo flow — health check only. Import this first to prove console → Kestra works.
   No secrets or Kubernetes runner required.
 
+inputs:
+  - id: app_health_url
+    type: STRING
+    defaults: http://fastapi-minimal.enlight-platform.svc.cluster.local:8000/health
+
 tasks:
   - id: health-check
     type: io.kestra.plugin.core.http.Request
-    uri: http://fastapi.enlight-staging.svc.cluster.local/health
+    uri: "{{ inputs.app_health_url }}"
     method: GET
     timeout: PT30S
 

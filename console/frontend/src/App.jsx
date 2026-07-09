@@ -3,48 +3,36 @@ import EnlightLogo from "./Logo";
 import {
   APP_NAME,
   APP_TAGLINE,
-  COMPANY_NAME,
-  DOMAIN_BASE,
-  INGRESS_ROUTES,
   PIPELINE_CLOUD,
   PIPELINE_LOCAL,
+  PLATFORM_SUBTITLE,
   STACK_CLOUD,
   STACK_LOCAL,
+  TOOL_CHIPS_CLOUD,
+  TOOL_CHIPS_LOCAL,
 } from "./branding";
 
 const DEFAULT_LABELS = {
   console: "Platform console",
   kestra: "Pipeline automation",
-  gitops: "GitOps",
+  gitops: "GitOps (ArgoCD)",
   registry: "Image registry",
   netdata: "Monitoring",
   application: "Demo application",
 };
 
-function StatusDot({ ok, skipped }) {
-  if (skipped) return <span className="status-dot skipped" />;
-  return <span className={`status-dot ${ok ? "ok" : "down"}`} />;
-}
-
-function ExternalLink({ href, children }) {
+function ExternalLink({ href, children, className = "" }) {
+  const safe = href && href.startsWith("http");
+  if (!safe) return <span className={`${className} disabled`}>{children}</span>;
   return (
-    <a href={href} target="_blank" rel="noreferrer" className="nav-link external">
+    <a href={href} target="_blank" rel="noreferrer" className={className}>
       {children}
-      <span className="ext-icon" aria-hidden="true">
-        ↗
-      </span>
     </a>
   );
 }
 
-function formatHostPath(path) {
-  if (path.includes("<host>")) {
-    return path.replace("<host>", DOMAIN_BASE);
-  }
-  if (path.startsWith("/")) {
-    return `${DOMAIN_BASE}${path}`;
-  }
-  return `${DOMAIN_BASE}${path === "/" ? "" : path}`;
+function openLink(href) {
+  if (href?.startsWith("http")) window.open(href, "_blank", "noopener,noreferrer");
 }
 
 export default function App() {
@@ -53,13 +41,15 @@ export default function App() {
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState(null);
   const [error, setError] = useState(null);
-  const [showRoutes, setShowRoutes] = useState(false);
 
   const isCloud = status?.mode === "oke";
   const stack = isCloud ? STACK_CLOUD : STACK_LOCAL;
   const pipeline = isCloud ? PIPELINE_CLOUD : PIPELINE_LOCAL;
+  const chips = isCloud ? TOOL_CHIPS_CLOUD : TOOL_CHIPS_LOCAL;
   const labels = status?.service_labels || DEFAULT_LABELS;
   const pipelineInfo = status?.pipeline;
+  const demo = status?.demo;
+  const links = status?.links || {};
 
   const fetchStatus = useCallback(async () => {
     setLoading(true);
@@ -92,7 +82,7 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setDeployResult({ ok: false, triggered: false, detail: data.detail || data });
+        setDeployResult({ ok: false, detail: data.detail || data });
       } else {
         setDeployResult({ ok: true, ...data });
       }
@@ -108,229 +98,212 @@ export default function App() {
   const total = status?.total ?? 4;
   const allGreen = status?.all_healthy;
   const flowReady = pipelineInfo?.flow_ready;
-  const displayHost = status?.paths?.console
-    ? new URL(status.paths.console).host
-    : DOMAIN_BASE;
+  const appOk = status?.services?.application?.ok;
+  const healthLabel = loading && !status ? "Checking…" : appOk ? "Operational" : "Down";
+  const healthClass = appOk ? "ok" : loading && !status ? "" : "down";
+  const sloPct = total > 0 ? ((healthy / total) * 100).toFixed(1) : "—";
+  const displayHost = status?.paths?.console ? new URL(status.paths.console).host : "—";
 
   return (
-    <div className="page">
-      <header className="topbar">
-        <a className="brand" href="/">
+    <div className="el-shell">
+      <header className="el-header">
+        <a className="el-brand" href="/">
           <EnlightLogo size={40} />
-          <span className="brand-name">{APP_NAME}</span>
+          <div>
+            <div className="el-brand-name">{APP_NAME}</div>
+            <div className="el-brand-sub">{APP_TAGLINE}</div>
+          </div>
         </a>
-        <nav className="nav">
-          <span className="nav-link active">Console</span>
-          <ExternalLink href={status?.links?.kestra || "#"}>Kestra</ExternalLink>
-          <ExternalLink href={status?.links?.application || "#"}>Demo app</ExternalLink>
-          {isCloud && (
-            <>
-              <ExternalLink href={status?.links?.gitops || "/gitops"}>GitOps</ExternalLink>
-              <ExternalLink href={status?.links?.netdata || "/metrics"}>Metrics</ExternalLink>
-            </>
-          )}
-        </nav>
+        <div className="el-live-badge">
+          <span className="el-live-dot" />
+          Live on Kubernetes
+        </div>
       </header>
 
-      <section className="hero">
-        <p className="hero-badge">{APP_TAGLINE}</p>
-        <h1>Build, ship, and monitor — all from one screen</h1>
-        <p className="hero-lead">
-          <strong>{COMPANY_NAME}</strong> gives clients a complete delivery story: automate with{" "}
-          <strong>Kestra</strong>, store images in <strong>OCIR</strong>, deploy with{" "}
-          <strong>GitOps</strong>, and run on <strong>Kubernetes</strong> — open source, no AWS
-          lock-in.
-        </p>
-        {pipelineInfo && (
-          <p className="pipeline-badge">
-            Active workflow: <code>{pipelineInfo.flow_id}</code>
-            {flowReady ? (
-              <span className="badge-ok"> ready</span>
-            ) : (
-              <span className="badge-warn"> — import in Kestra UI</span>
-            )}
+      <main className="el-main">
+        <section className="el-hero-card">
+          <p className="el-env-label">{PLATFORM_SUBTITLE}</p>
+          <h1>Deploy applications on Oracle OKE</h1>
+          <p className="el-hero-desc">
+            One console to run the full delivery story — Kestra orchestrates, Dagger builds,
+            OCIR stores images, and ArgoCD deploys to Kubernetes via GitOps.
           </p>
-        )}
-        <div className="hero-actions">
-          <button
-            className="btn btn-primary"
-            onClick={runDeploy}
-            disabled={deploying}
-          >
-            {deploying ? "Starting…" : "Run client demo ▶"}
-          </button>
-          <button className="btn btn-secondary" onClick={fetchStatus}>
-            Refresh status
-          </button>
-          {pipelineInfo?.flow_url && (
-            <ExternalLink href={pipelineInfo.flow_url}>View workflow →</ExternalLink>
-          )}
-        </div>
-        {deployResult && (
-          <div
-            className={`deploy-result ${
-              deployResult.detail ? "error" : deployResult.triggered !== false ? "success" : "info"
-            }`}
-          >
-            {deployResult.detail ? (
-              <>
-                Could not start pipeline.{" "}
-                {typeof deployResult.detail === "object"
-                  ? deployResult.detail.hint || deployResult.detail.message || JSON.stringify(deployResult.detail)
-                  : deployResult.detail}
-              </>
-            ) : deployResult.triggered !== false ? (
-              <>
-                Pipeline <code>{deployResult.flow_id}</code> started.{" "}
-                {deployResult.url && deployResult.url.startsWith("http") && (
-                  <a href={deployResult.url} target="_blank" rel="noreferrer">
-                    Watch in Kestra →
-                  </a>
-                )}
-              </>
-            ) : (
-              <>
-                {deployResult.message}{" "}
-                {deployResult.hint && <span className="muted">{deployResult.hint}</span>}
-              </>
+          <div className="el-chips">
+            {chips.map((c) => (
+              <span key={c} className="el-chip">
+                {c}
+              </span>
+            ))}
+          </div>
+          <div className="el-actions">
+            <button
+              type="button"
+              className="el-btn el-btn-primary"
+              onClick={runDeploy}
+              disabled={deploying || flowReady === false}
+            >
+              {deploying ? "Starting…" : "Run client demo ▶"}
+            </button>
+            {pipelineInfo?.flow_url && (
+              <ExternalLink href={pipelineInfo.flow_url} className="el-btn el-btn-outline">
+                Open Kestra →
+              </ExternalLink>
             )}
+            <ExternalLink href={links.application} className="el-btn el-btn-outline">
+              Demo app →
+            </ExternalLink>
+            <button type="button" className="el-btn el-btn-ghost" onClick={fetchStatus}>
+              Refresh
+            </button>
           </div>
-        )}
-      </section>
+          {pipelineInfo && (
+            <p className="el-flow-line">
+              Workflow <code>{pipelineInfo.flow_id}</code>
+              {flowReady ? <span className="el-ok"> · ready</span> : <span className="el-warn"> · setup needed</span>}
+            </p>
+          )}
+          {deployResult && (
+            <div className={`el-alert ${deployResult.detail ? "error" : "success"}`}>
+              {deployResult.detail ? (
+                typeof deployResult.detail === "object"
+                  ? deployResult.detail.hint || deployResult.detail.message
+                  : deployResult.detail
+              ) : (
+                <>
+                  Pipeline started.{" "}
+                  {deployResult.url?.startsWith("http") && (
+                    <a href={deployResult.url} target="_blank" rel="noreferrer">
+                      Watch in Kestra →
+                    </a>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </section>
 
-      <section className="stats-row">
-        <div className="stat">
-          <div className="stat-value">{loading && !status ? "—" : `${healthy}/${total}`}</div>
-          <div className="stat-label">Services healthy</div>
-        </div>
-        <div className="stat">
-          <div className="stat-value accent">4</div>
-          <div className="stat-label">Pipeline steps</div>
-        </div>
-        <div className="stat">
-          <div className="stat-value accent">{isCloud ? "Cloud" : "Local"}</div>
-          <div className="stat-label">Environment</div>
-        </div>
-        <div className="stat">
-          <div className={`stat-value ${allGreen && flowReady !== false ? "accent" : ""}`}>
-            {allGreen && flowReady !== false ? "Ready" : flowReady === false ? "Setup" : "Check"}
+        <section className="el-dashboard">
+          <div className="el-slo">
+            <div className="el-slo-ring">
+              <span className="el-slo-value">{sloPct}%</span>
+            </div>
+            <span className="el-slo-label">Platform health</span>
           </div>
-          <div className="stat-label">Demo status</div>
-        </div>
-      </section>
 
-      <section className="grid capabilities">
-        <h2>What&apos;s in the platform</h2>
-        <p className="section-lead">
-          Every card is a real tool — click to open it, or run the full demo from the button above.
-        </p>
-        <div className="card-grid">
-          {stack.map((item) => (
-            <article key={item.id} className="card">
-              <p className="card-tool">{item.tool}</p>
-              <h3>{item.title}</h3>
-              <p>{item.description}</p>
-              <button
-                type="button"
-                className="card-link"
-                onClick={() => window.open(status?.links?.[item.linkKey] || "#", "_blank")}
-              >
-                {item.action}
-              </button>
+          <div className="el-metrics">
+            <article className="el-metric">
+              <span className="el-metric-icon">⚡</span>
+              <h3>Health</h3>
+              <p className={`el-metric-val ${healthClass}`}>{healthLabel}</p>
             </article>
-          ))}
-        </div>
-      </section>
+            <article className="el-metric">
+              <span className="el-metric-icon">☸️</span>
+              <h3>Cluster</h3>
+              <p className="el-metric-val">{isCloud ? "Oracle OKE" : "Local"}</p>
+            </article>
+            <article className="el-metric">
+              <span className="el-metric-icon">🔄</span>
+              <h3>GitOps</h3>
+              <p className="el-metric-val ok">{isCloud ? "ArgoCD" : "Dokploy"}</p>
+            </article>
+            <article className="el-metric">
+              <span className="el-metric-icon">🛡️</span>
+              <h3>Pipeline</h3>
+              <p className={`el-metric-val ${flowReady !== false ? "ok" : "down"}`}>
+                {flowReady !== false ? "Kestra ready" : "Setup"}
+              </p>
+            </article>
+          </div>
+        </section>
 
-      <section className="grid status-panel">
-        <h2>Live service health</h2>
-        <p className="section-lead">
-          Updated every 15 seconds. Green means that part of the platform is reachable.
-          {status?.app_note && <span className="muted"> {status.app_note}</span>}
-        </p>
-        {loading && !status && <p className="muted">Checking services…</p>}
-        {error && <p className="error-text">{error}</p>}
-        {status && (
-          <div className="status-grid">
-            {Object.entries(status.services).map(([name, svc]) => (
-              <div key={name} className="status-card">
-                <div className="status-head">
-                  <StatusDot ok={svc.ok} skipped={svc.skipped} />
-                  <span className="status-name">{labels[name] || name}</span>
+        <section className="el-pipeline-section">
+          <h2>Deployment pipeline</h2>
+          <div className="el-pipeline">
+            {pipeline.map((step, i) => (
+              <div key={step.n} className="el-pipeline-wrap">
+                <div className="el-pipeline-step">
+                  <span className="el-pipeline-icon">{step.icon}</span>
+                  <span className="el-pipeline-title">{step.title}</span>
+                  <span className="el-pipeline-status">
+                    {i < pipeline.length - 1 ? "Ready" : allGreen ? "Healthy" : "—"}
+                  </span>
                 </div>
-                <div className="status-meta">
-                  {svc.skipped ? (
-                    <span className="muted">{svc.message}</span>
-                  ) : svc.ok ? (
-                    <span>{svc.note || `${svc.latency_ms}ms response`}</span>
-                  ) : (
-                    <span className="error-text">{svc.error || `HTTP ${svc.status_code}`}</span>
+                {i < pipeline.length - 1 && <span className="el-pipeline-arrow">→</span>}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {demo && (
+          <section className="el-proof">
+            <strong>What this demo proves</strong>
+            <p>{demo.proves}</p>
+          </section>
+        )}
+
+        <section className="el-capabilities">
+          <h2>Platform capabilities</h2>
+          <p className="el-section-lead">
+            {isCloud
+              ? "Kestra → Dagger → OCIR → ArgoCD → Oracle OKE"
+              : "Local laptop stack — Kestra → Dagger → Dokploy"}
+          </p>
+          <div className="el-cap-grid">
+            {stack.map((item, idx) => {
+              const href = links[item.linkKey];
+              const disabled = !href?.startsWith("http");
+              return (
+                <article key={item.id} className="el-cap-card">
+                  <span className="el-cap-num">{idx + 1}</span>
+                  <span className="el-cap-icon">{item.icon}</span>
+                  <h3>{item.title}</h3>
+                  <p className="el-cap-tool">{item.tool}</p>
+                  <p>{item.description}</p>
+                  <button
+                    type="button"
+                    className="el-cap-link"
+                    disabled={disabled}
+                    onClick={() => openLink(href)}
+                  >
+                    {item.action} →
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="el-services">
+          <h2>Service status</h2>
+          {error && <p className="el-error">{error}</p>}
+          {status && (
+            <div className="el-service-grid">
+              {Object.entries(status.services).map(([name, svc]) => (
+                <div key={name} className="el-service-card">
+                  <div className="el-service-head">
+                    <span className={`el-dot ${svc.ok ? "ok" : svc.skipped ? "skip" : "down"}`} />
+                    <span>{labels[name] || name}</span>
+                  </div>
+                  <p className="el-service-meta">
+                    {svc.ok ? svc.note || `${svc.latency_ms}ms` : svc.error || `HTTP ${svc.status_code}`}
+                  </p>
+                  {links[name]?.startsWith("http") && (
+                    <ExternalLink href={links[name]} className="el-cap-link">
+                      Open →
+                    </ExternalLink>
                   )}
                 </div>
-                {status.links[name] && !svc.skipped && (
-                  <ExternalLink href={status.links[name]}>Open</ExternalLink>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="grid how">
-        <h2>How the demo works</h2>
-        <p className="section-lead">
-          {pipelineInfo?.flow_description || "Four steps from button click to live application."}
-        </p>
-        <div className="steps">
-          {pipeline.map((step) => (
-            <div key={step.n} className="step">
-              <div className="step-num">{step.n}</div>
-              <div>
-                <h3>{step.title}</h3>
-                <p>{step.body}</p>
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </section>
+          )}
+        </section>
+      </main>
 
-      <section className="grid oke-section">
-        <div className="oke-header">
-          <div>
-            <h2>Platform URLs</h2>
-            <p className="section-lead oke-lead">
-              Console and GitOps share one hostname; Kestra and the demo app use subdomains.
-              Live host: <code>{displayHost}</code>
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => setShowRoutes(!showRoutes)}
-          >
-            {showRoutes ? "Hide paths" : "Show paths"}
-          </button>
-        </div>
-        {showRoutes && (
-          <div className="ingress-table">
-            {INGRESS_ROUTES.map((row) => (
-              <div key={row.path} className="ingress-row">
-                <code>{formatHostPath(row.path)}</code>
-                <span>{row.service}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <footer className="footer">
-        <div className="footer-brand">
-          <EnlightLogo size={28} />
-          <span>{COMPANY_NAME}</span>
-        </div>
-        <p className="muted">
-          {isCloud ? "Running on Kubernetes" : "Local development"} · <code>{displayHost}</code>
-        </p>
+      <footer className="el-footer">
+        <EnlightLogo size={22} />
+        <span>
+          {APP_NAME} · {PLATFORM_SUBTITLE} · {displayHost}
+        </span>
       </footer>
     </div>
   );

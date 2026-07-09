@@ -38,12 +38,12 @@ class Settings(BaseSettings):
             self.netdata_url = f"{base.rstrip('/')}/metrics" if base else "/metrics"
         if "host.docker.internal" in self.app_health_url:
             self.app_health_url = (
-                "http://fastapi.enlight-staging.svc.cluster.local/health"
+                "http://fastapi-minimal.enlight-platform.svc.cluster.local:8000/health"
             )
         if self.kestra_namespace == "platform":
             self.kestra_namespace = "main"
         if self.kestra_flow_id == "dagger-dokploy-pipeline":
-            self.kestra_flow_id = "oke-deploy-simple"
+            self.kestra_flow_id = "oke-dagger-gitops-pipeline"
         return self
 
     @property
@@ -92,12 +92,49 @@ class Settings(BaseSettings):
         return self.app_health_url.replace("/health", "")
 
     @property
+    def deploy_target(self) -> str:
+        if self.mode.lower() == "oke":
+            if self.kestra_flow_id == "oke-dagger-gitops-pipeline":
+                return "enlight-platform / fastapi-minimal (via ArgoCD GitOps)"
+            return "enlight-platform / fastapi-minimal"
+        return "local FastAPI via Dokploy"
+
+    @property
+    def uses_dagger(self) -> bool:
+        return self.kestra_flow_id in (
+            "dagger-dokploy-pipeline",
+            "oke-ocir-pipeline",
+            "oke-dagger-gitops-pipeline",
+        )
+
+    @property
+    def demo_proves(self) -> str:
+        if self.kestra_flow_id == "oke-dagger-gitops-pipeline":
+            return (
+                "Kestra clones your app from GitHub, Dagger builds and pushes the image to OCIR, "
+                "updates the GitOps manifest, ArgoCD syncs to OKE, and the pipeline verifies /health."
+            )
+        if self.kestra_flow_id == "oke-deploy-simple":
+            return (
+                "Kestra checks your FastAPI app /health, restarts the deployment on Kubernetes, "
+                "then checks /health again — proving the live demo app survives a rollout."
+            )
+        if self.kestra_flow_id == "oke-health-check":
+            return "Kestra calls your FastAPI /health endpoint — proves orchestration reaches the app."
+        if self.uses_dagger:
+            return "Kestra builds with Dagger, pushes the image, deploys, and verifies /health."
+        return "Kestra runs the configured workflow end-to-end against your application."
+
+    @property
     def flow_description(self) -> str:
         descriptions = {
             "oke-health-check": "Health check only — proves console → Kestra → app.",
-            "oke-deploy-simple": "Health check → rollout restart → health check.",
-            "oke-deploy-pipeline": "Git clone → Kaniko build → OCIR push → rollout.",
-            "dagger-dokploy-pipeline": "Local: Dagger build → Dokploy deploy.",
+            "oke-deploy-simple": "Health check → rollout restart → health check (smoke test).",
+            "oke-dagger-gitops-pipeline": (
+                "Clone → Dagger build → OCIR push → GitOps commit → ArgoCD sync → health."
+            ),
+            "oke-deploy-pipeline": "Git clone → Kaniko build → OCIR push → rollout (advanced).",
+            "dagger-dokploy-pipeline": "Local only: Dagger build → Dokploy deploy.",
         }
         return descriptions.get(self.kestra_flow_id, "Kestra workflow")
 

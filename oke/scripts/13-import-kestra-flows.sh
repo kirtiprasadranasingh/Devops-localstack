@@ -33,7 +33,7 @@ echo "==> Import flows"
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
-for flow in oke-health-check.yaml oke-deploy-simple.yaml oke-deploy-rollout.yaml oke-deploy-pipeline.yaml; do
+for flow in oke-health-check.yaml oke-deploy-simple.yaml oke-deploy-rollout.yaml oke-deploy-pipeline.yaml oke-dagger-gitops-pipeline.yaml; do
   path="${ROOT}/kestra/flows/${flow}"
   [[ -f "$path" ]] && import_flow "$path" || echo "SKIP ${flow}"
 done

@@ -68,7 +68,7 @@ spec:
 
             - name: KESTRA_FLOW_ID
 
-              value: oke-deploy-simple
+              value: oke-dagger-gitops-pipeline
 
             - name: KESTRA_USERNAME
 
@@ -76,7 +76,7 @@ spec:
 
             - name: KESTRA_PASSWORD
 
-              value: enlight-demo
+              value: Admin1234
 
             - name: GITOPS_PUBLIC_URL
 
@@ -84,7 +84,7 @@ spec:
 
             - name: APP_HEALTH_URL
 
-              value: http://fastapi.enlight-staging.svc.cluster.local/health
+              value: http://fastapi-minimal.enlight-platform.svc.cluster.local:8000/health
 
             - name: REGISTRY_URL
 

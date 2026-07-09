@@ -2,8 +2,8 @@
 
 DOMAIN_BASE = "devopslocalstack.enlightlab.com"
 COMPANY_NAME = "Enlight Lab"
-APP_NAME = "Enlight Lab"
-APP_TAGLINE = "Open-source DevOps platform"
+APP_NAME = "EnlightLab"
+APP_TAGLINE = "Unified DevOps Platform — DevOps Local Stack"
 
 SELFHEAL_APP_URL = "https://selfheal.enlightlab.com/staging"
 

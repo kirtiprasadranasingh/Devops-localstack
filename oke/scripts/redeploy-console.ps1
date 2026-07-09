@@ -7,7 +7,7 @@
   .\redeploy-console.ps1 -Tag v8 -SkipKubectl
 #>
 param(
-    [string]$Tag = "v8",
+    [string]$Tag = "v13",
     [string]$OcirNamespace = "bmitpaosivqx",
     [string]$Region = "ap-mumbai-1",
     [string]$IngressHost = "144-24-100-85.nip.io",
@@ -47,12 +47,13 @@ if ($SkipKubectl) {
 kubectl set image deployment/enlight-console console=$ConsoleImage -n enlight-platform
 kubectl set env deployment/enlight-console -n enlight-platform `
   MODE=oke `
-  KESTRA_FLOW_ID=oke-deploy-simple `
+  KESTRA_FLOW_ID=oke-dagger-gitops-pipeline `
   KESTRA_NAMESPACE=main `
   KESTRA_URL=http://kestra.enlight-platform.svc.cluster.local:8080 `
   KESTRA_PUBLIC_URL=$KestraPublic `
   PUBLIC_BASE_URL=$PublicBase `
-  APP_HEALTH_URL=http://fastapi.enlight-staging.svc.cluster.local/health
+  APP_HEALTH_URL=http://fastapi-minimal.enlight-platform.svc.cluster.local:8000/health `
+  KESTRA_PASSWORD=Admin1234
 kubectl patch deployment enlight-console -n enlight-platform -p '{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"console\",\"imagePullPolicy\":\"Always\"}]}}}}'
 kubectl rollout restart deployment/enlight-console -n enlight-platform
 kubectl rollout status deployment/enlight-console -n enlight-platform --timeout=300s
@@ -66,7 +67,7 @@ Write-Host ""
 Write-Host "==> Apply on cluster (kubectl)" -ForegroundColor Cyan
 kubectl set image deployment/enlight-console console=$ConsoleImage -n enlight-platform
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "kubectl failed — cluster not reachable from this PC." -ForegroundColor Yellow
+    Write-Host "kubectl failed - cluster not reachable from this PC." -ForegroundColor Yellow
     Write-Host "Re-run with: .\redeploy-console.ps1 -Tag $Tag -SkipKubectl" -ForegroundColor Yellow
     Write-Host "Then paste the Cloud Shell commands it prints." -ForegroundColor Yellow
     exit 1
@@ -74,12 +75,13 @@ if ($LASTEXITCODE -ne 0) {
 
 kubectl set env deployment/enlight-console -n enlight-platform `
   MODE=oke `
-  KESTRA_FLOW_ID=oke-deploy-simple `
+  KESTRA_FLOW_ID=oke-dagger-gitops-pipeline `
   KESTRA_NAMESPACE=main `
   KESTRA_URL=http://kestra.enlight-platform.svc.cluster.local:8080 `
   KESTRA_PUBLIC_URL=$KestraPublic `
   PUBLIC_BASE_URL=$PublicBase `
-  APP_HEALTH_URL=http://fastapi.enlight-staging.svc.cluster.local/health
+  APP_HEALTH_URL=http://fastapi-minimal.enlight-platform.svc.cluster.local:8000/health `
+  KESTRA_PASSWORD=Admin1234
 
 kubectl patch deployment enlight-console -n enlight-platform --type='json' -p='[{"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Always"}]' 2>$null
 kubectl rollout restart deployment/enlight-console -n enlight-platform
@@ -88,4 +90,4 @@ kubectl rollout status deployment/enlight-console -n enlight-platform --timeout=
 Write-Host ""
 Write-Host "Verify:" -ForegroundColor Green
 Write-Host "  curl $PublicBase/api/info"
-Write-Host "  Open $PublicBase  (Ctrl+F5)"
+Write-Host "  Open $PublicBase  (hard refresh: Ctrl+Shift+R)"

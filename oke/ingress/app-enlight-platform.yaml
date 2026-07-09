@@ -1,0 +1,22 @@
+# Demo app for Enlight Lab project (NOT selfheal staging).
+# URL: http://app.144-24-100-85.nip.io
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-enlight-platform
+  namespace: enlight-platform
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: app.PLACEHOLDER_HOST
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: fastapi-minimal
+                port:
+                  number: 8000

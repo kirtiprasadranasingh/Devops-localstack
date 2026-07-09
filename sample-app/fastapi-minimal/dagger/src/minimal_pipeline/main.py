@@ -1,4 +1,4 @@
-"""Dagger pipeline: build image -> push registry -> trigger Dokploy deploy."""
+"""Dagger pipeline: build image -> push registry -> optional Dokploy deploy (local)."""
 
 import json
 

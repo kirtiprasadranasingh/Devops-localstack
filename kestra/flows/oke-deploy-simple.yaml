@@ -18,19 +18,19 @@ inputs:
 
     type: STRING
 
-    defaults: enlight-staging
+    defaults: enlight-platform
 
   - id: k8s_deployment
 
     type: STRING
 
-    defaults: fastapi
+    defaults: fastapi-minimal
 
   - id: app_health_url
 
     type: STRING
 
-    defaults: http://fastapi.enlight-staging.svc.cluster.local/health
+    defaults: http://fastapi-minimal.enlight-platform.svc.cluster.local:8000/health
 
 
 

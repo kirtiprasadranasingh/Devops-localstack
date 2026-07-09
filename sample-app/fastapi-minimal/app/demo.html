@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{APP_NAME}} — {{PLATFORM}}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0b0f1a;
+      --bg-card: rgba(255, 255, 255, 0.04);
+      --border: rgba(255, 255, 255, 0.1);
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-2: #818cf8;
+      --success: #34d399;
+      --glow: rgba(56, 189, 248, 0.35);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    .bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% -10%, rgba(56, 189, 248, 0.18), transparent),
+        radial-gradient(ellipse 60% 50% at 90% 20%, rgba(129, 140, 248, 0.15), transparent),
+        radial-gradient(ellipse 50% 40% at 50% 100%, rgba(52, 211, 153, 0.08), transparent),
+        var(--bg);
+    }
+    .grid {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse at center, black 20%, transparent 75%);
+    }
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .logo-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 1.1rem;
+      box-shadow: 0 0 32px var(--glow);
+    }
+    .logo h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .logo p {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.4rem 0.85rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 12px var(--success);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.7; transform: scale(0.92); }
+    }
+    .hero {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+    .hero h2 {
+      font-size: clamp(1.75rem, 5vw, 2.5rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 0.75rem;
+      background: linear-gradient(135deg, #fff 30%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p {
+      color: var(--muted);
+      font-size: 1.05rem;
+      max-width: 520px;
+      margin: 0 auto 1.5rem;
+    }
+    .pipeline {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 2rem;
+    }
+    .step {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.45rem 0.75rem;
+      border-radius: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .step strong { color: var(--text); }
+    .step.done strong { color: var(--success); }
+    .arrow { color: var(--muted); font-size: 0.7rem; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .card {
+      padding: 1.25rem;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      backdrop-filter: blur(8px);
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .card:hover {
+      border-color: rgba(56, 189, 248, 0.35);
+      transform: translateY(-2px);
+    }
+    .card-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+    .card-value {
+      font-size: 1.35rem;
+      font-weight: 700;
+      font-family: "JetBrains Mono", monospace;
+    }
+    .card-value.ok { color: var(--success); }
+    .links {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.75rem;
+    }
+    .link {
+      display: block;
+      padding: 0.9rem 1rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: linear-gradient(135deg, rgba(56,189,248,0.08), rgba(129,140,248,0.06));
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+    .link:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 24px var(--glow);
+      transform: translateY(-1px);
+    }
+    .link span {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 400;
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+    footer {
+      margin-top: 2.5rem;
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-family: "JetBrains Mono", monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="grid"></div>
+  <div class="wrap">
+    <header>
+      <div class="logo">
+        <div class="logo-mark">EL</div>
+        <div>
+          <h1>{{APP_NAME}}</h1>
+          <p>{{PLATFORM}} · {{ENV}}</p>
+        </div>
+      </div>
+      <div class="badge" id="live-badge">
+        <span class="dot"></span>
+        <span id="live-text">Checking health…</span>
+      </div>
+    </header>
+
+    <section class="hero">
+      <h2>Your app is live on Kubernetes</h2>
+      <p>Deployed by the Enlight Lab pipeline — GitOps, automated rollouts, and health checks on Oracle OKE.</p>
+      <div class="pipeline">
+        <div class="step done"><strong>Git</strong></div>
+        <span class="arrow">→</span>
+        <div class="step done"><strong>Build</strong></div>
+        <span class="arrow">→</span>
+        <div class="step done"><strong>Deploy</strong></div>
+        <span class="arrow">→</span>
+        <div class="step done"><strong id="health-step">Healthy</strong></div>
+      </div>
+    </section>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-label">Health</div>
+        <div class="card-value ok" id="health-val">—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Version</div>
+        <div class="card-value">{{VERSION}}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Cluster</div>
+        <div class="card-value" style="font-size:1rem;">Oracle OKE</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Namespace</div>
+        <div class="card-value" style="font-size:1rem;">enlight-platform</div>
+      </div>
+    </div>
+
+    <div class="links">
+      <a class="link" href="http://144-24-100-85.nip.io" target="_blank" rel="noopener">
+        Console
+        <span>Run client demo</span>
+      </a>
+      <a class="link" href="http://kestra.144-24-100-85.nip.io" target="_blank" rel="noopener">
+        Kestra
+        <span>Pipeline runs</span>
+      </a>
+      <a class="link" href="https://argocd.enlightlab.com" target="_blank" rel="noopener">
+        ArgoCD
+        <span>GitOps sync</span>
+      </a>
+      <a class="link" href="/api/info" target="_blank" rel="noopener">
+        API
+        <span>JSON metadata</span>
+      </a>
+    </div>
+
+    <footer>
+      fastapi-minimal · v{{VERSION}} · <span id="ts"></span>
+    </footer>
+  </div>
+  <script>
+    async function checkHealth() {
+      try {
+        const r = await fetch("/health");
+        const d = await r.json();
+        const ok = d.status === "ok";
+        document.getElementById("health-val").textContent = ok ? "Operational" : "Degraded";
+        document.getElementById("live-text").textContent = ok ? "Live on Kubernetes" : "Unhealthy";
+        document.getElementById("health-step").textContent = ok ? "Healthy" : "Check";
+      } catch {
+        document.getElementById("health-val").textContent = "Unreachable";
+        document.getElementById("live-text").textContent = "Health check failed";
+      }
+    }
+    checkHealth();
+    setInterval(checkHealth, 15000);
+    document.getElementById("ts").textContent = new Date().toLocaleString();
+  </script>
+</body>
+</html>

@@ -3,10 +3,12 @@ kind: Application
 metadata:
   name: fastapi-minimal
   namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    repoURL: https://github.com/kirtiprasad2003/platform-poc.git
+    repoURL: https://github.com/kirtiprasadranasingh/Devops-localstack.git
     targetRevision: main
     path: oke/gitops/apps/fastapi
     directory:

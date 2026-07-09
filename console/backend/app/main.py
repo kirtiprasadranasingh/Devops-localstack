@@ -147,9 +147,10 @@ async def platform_info() -> dict[str, Any]:
 
 @app.get("/api/status")
 async def platform_status() -> dict[str, Any]:
+    app_probe = await probe(f"{settings.app_public_url.rstrip('/')}", "/health")
     services: dict[str, Any] = {
         "console": await probe("http://127.0.0.1:3100", "/api/health"),
-        "application": await probe(settings.app_health_url),
+        "application": app_probe,
         "registry": await probe_registry(settings.registry_url),
     }
     if settings.mode == "oke":
@@ -204,6 +205,23 @@ async def platform_status() -> dict[str, Any]:
         },
         "ingress_preview": INGRESS_ROUTES,
         "paths": settings.hosts,
+        "demo": {
+            "proves": settings.demo_proves,
+            "app_url": settings.app_public_url,
+            "health_url": f"{settings.app_public_url.rstrip('/')}/health",
+            "deploy_target": settings.deploy_target,
+            "uses_dagger": settings.uses_dagger,
+            "build_note": (
+                "Dagger builds the image inside Kestra, pushes to OCIR, "
+                "and ArgoCD deploys the GitOps manifest to OKE."
+                if settings.mode == "oke" and settings.uses_dagger
+                else (
+                    "Dagger builds the image inside the Kestra flow."
+                    if settings.uses_dagger
+                    else "Build runs via Dagger on your local machine."
+                )
+            ),
+        },
         "app_note": (
             "Demo app at app."
             + (
@@ -242,8 +260,14 @@ async def trigger_deploy(body: DeployRequest | None = None) -> dict[str, Any]:
         "app_health_url": settings.app_health_url,
     }
     if settings.mode == "oke":
-        inputs["k8s_namespace"] = "enlight-staging"
-        inputs["k8s_deployment"] = "fastapi"
+        inputs["k8s_namespace"] = "enlight-platform"
+        inputs["k8s_deployment"] = "fastapi-minimal"
+        if flow_id == "oke-dagger-gitops-pipeline":
+            inputs["git_repo"] = settings.github_repo
+            inputs["gitops_manifest"] = "oke/gitops/apps/fastapi/deployment.yaml"
+            inputs["argocd_app"] = "fastapi-minimal"
+            inputs["ocir_registry"] = "ap-mumbai-1.ocir.io/bmitpaosivqx"
+            inputs["ocir_image_name"] = "enlight-fastapi"
 
     try:
         async with kestra_client(timeout=30.0) as client:
