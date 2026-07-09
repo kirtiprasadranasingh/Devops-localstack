@@ -4,7 +4,6 @@ namespace: main
 description: |
   Full OKE delivery pipeline — Enlight Lab client demo.
   Clone GitHub → Dagger build → push OCIR → GitOps commit → ArgoCD sync → health check.
-  Uses kubectl.Apply Job (OSS-compatible — no Kubernetes script runner plugin).
   Required secrets: GITHUB_TOKEN, OCIR_USERNAME, OCIR_TOKEN
 
 labels:
@@ -50,12 +49,12 @@ tasks:
   - id: run-pipeline-job
     type: io.kestra.plugin.kubernetes.kubectl.Apply
     namespace: "{{ inputs.k8s_namespace }}"
-    spec:
+    spec: |
       apiVersion: batch/v1
       kind: Job
       metadata:
         generateName: enlight-pipeline-
-        namespace: "{{ inputs.k8s_namespace }}"
+        namespace: {{ inputs.k8s_namespace }}
       spec:
         backoffLimit: 0
         ttlSecondsAfterFinished: 600
@@ -87,9 +86,8 @@ tasks:
                     value: "{{ secret('OCIR_TOKEN') }}"
                 command:
                   - /bin/sh
-                  - -c
+                  - -ec
                   - |
-                    set -euxo pipefail
                     apk add --no-cache curl bash git sed
                     curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR=/usr/local/bin sh
                     pip install --no-cache-dir dagger-io
@@ -101,16 +99,13 @@ tasks:
                     REPO_URL="${GIT_REPO#https://}"
                     git clone --depth 1 -b "$GIT_BRANCH" "https://x-access-token:${GITHUB_TOKEN}@${REPO_URL}" /work
                     cd /work/sample-app/fastapi-minimal/dagger
-                    dagger call build-and-publish \
-                      --registry="${OCIR_REGISTRY}" \
-                      --image="${OCIR_IMAGE_NAME}" \
-                      --tag="${TAG}"
+                    dagger call build-and-publish --registry="${OCIR_REGISTRY}" --image="${OCIR_IMAGE_NAME}" --tag="${TAG}"
                     cd /work
                     git config user.email "kestra@enlightlab.com"
                     git config user.name "Kestra Enlight Lab"
                     sed -i "s|image:.*|image: ${FULL_IMAGE}|" "$GITOPS_MANIFEST"
                     git add "$GITOPS_MANIFEST"
-                    git commit -m "deploy: ${FULL_IMAGE} [kestra pipeline]" || true
+                    git commit -m "deploy: ${FULL_IMAGE} [kestra]" || true
                     git push origin "$GIT_BRANCH"
                     echo "DONE ${FULL_IMAGE}"
                 resources:

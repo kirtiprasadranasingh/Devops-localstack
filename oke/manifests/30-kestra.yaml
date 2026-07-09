@@ -108,7 +108,7 @@ spec:
 
                       username: admin@enlightlab.com
 
-                      password: enlight-demo
+                      password: Admin1234
 
           volumeMounts:
 
@@ -166,9 +166,13 @@ spec:
 
         - name: kestra-data
 
-          emptyDir: {}
+          persistentVolumeClaim:
+
+            claimName: kestra-data
 
         - name: kestra-db
 
-          emptyDir: {}
+          persistentVolumeClaim:
+
+            claimName: kestra-db
 
