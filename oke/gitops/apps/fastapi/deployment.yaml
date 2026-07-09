@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-fastapi:20260709-213033
+          image: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-fastapi:20260709-214317
           ports:
             - containerPort: 8000
           livenessProbe:
