@@ -56,7 +56,7 @@ tasks:
       apiVersion: batch/v1
       kind: Job
       metadata:
-        generateName: enlight-pipeline-
+        name: enlight-pipeline-{{ execution.id | lower }}
         namespace: {{ inputs.k8s_namespace }}
       spec:
         backoffLimit: 0
@@ -69,6 +69,8 @@ tasks:
             containers:
               - name: pipeline
                 image: {{ inputs.pipeline_image }}
+                command:
+                  - /pipeline/run.sh
                 env:
                   - name: GIT_BRANCH
                     value: "{{ inputs.git_branch }}"
