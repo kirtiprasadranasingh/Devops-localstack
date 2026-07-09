@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Import flows through kubectl port-forward — avoids nginx 504 on large YAML.
+# Import flows through kubectl port-forward — tries multiple Kestra API versions.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -14,29 +14,54 @@ KESTRA_PF="http://127.0.0.1:${PF_PORT}"
 
 import_one() {
   local file="$1"
-  local flow_id
+  local flow_id namespace
   flow_id="$(grep '^id:' "$file" | awk '{print $2}')"
-  echo "  -> $(basename "$file") (${flow_id})"
-  if curl -sf -u "${KESTRA_USER}:${KESTRA_PASS}" -X POST \
-    "${KESTRA_PF}/api/v1/main/flows" \
-    -H "Content-Type: application/x-yaml" \
-    --data-binary @"${file}"; then
-    echo "     OK POST"
-    return 0
-  fi
-  if curl -sf -u "${KESTRA_USER}:${KESTRA_PASS}" -X PUT \
-    "${KESTRA_PF}/api/v1/main/flows/main/${flow_id}" \
-    -H "Content-Type: application/x-yaml" \
-    --data-binary @"${file}"; then
-    echo "     OK PUT"
-    return 0
-  fi
-  echo "     FAIL — response:"
-  curl -s -u "${KESTRA_USER}:${KESTRA_PASS}" -X POST \
-    "${KESTRA_PF}/api/v1/main/flows" \
-    -H "Content-Type: application/x-yaml" \
-    --data-binary @"${file}" \
-    -w "\nHTTP %{http_code}\n" | tail -5
+  namespace="$(grep '^namespace:' "$file" | awk '{print $2}')"
+  namespace="${namespace:-main}"
+  echo "  -> $(basename "$file") (${namespace}/${flow_id})"
+
+  local url method code body
+  for attempt in \
+    "POST|${KESTRA_PF}/api/v1/main/flows" \
+    "PUT|${KESTRA_PF}/api/v1/main/flows/${namespace}/${flow_id}" \
+    "POST|${KESTRA_PF}/api/v1/flows" \
+    "PUT|${KESTRA_PF}/api/v1/flows/${namespace}/${flow_id}"; do
+    method="${attempt%%|*}"
+    url="${attempt#*|}"
+    body=$(curl -s -u "${KESTRA_USER}:${KESTRA_PASS}" -X "${method}" \
+      "${url}" \
+      -H "Content-Type: application/x-yaml" \
+      --data-binary @"${file}" \
+      -w "\nHTTP_CODE:%{http_code}")
+    code="${body##*HTTP_CODE:}"
+    body="${body%HTTP_CODE:*}"
+    if [[ "${code}" == "200" || "${code}" == "201" ]]; then
+      echo "     OK ${method} ${url} (${code})"
+      return 0
+    fi
+  done
+
+  echo "     FAIL last HTTP ${code}"
+  echo "${body}" | tail -3
+  return 1
+}
+
+trigger_test() {
+  local flow_id="$1"
+  local namespace="${2:-main}"
+  for url in \
+    "${KESTRA_PF}/api/v1/main/executions/${namespace}/${flow_id}" \
+    "${KESTRA_PF}/api/v1/executions/${namespace}/${flow_id}"; do
+    body=$(curl -s -u "${KESTRA_USER}:${KESTRA_PASS}" -X POST "${url}" -w "\nHTTP_CODE:%{http_code}")
+    code="${body##*HTTP_CODE:}"
+    if [[ "${code}" == "200" || "${code}" == "201" ]]; then
+      echo "Trigger OK via ${url}"
+      echo "${body%HTTP_CODE:*}" | head -c 200
+      echo ""
+      return 0
+    fi
+  done
+  echo "Trigger FAILED for ${flow_id}"
   return 1
 }
 
@@ -45,15 +70,18 @@ kubectl port-forward -n "${NS}" "svc/kestra" "${PF_PORT}:8080" >/tmp/kestra-pf.l
 PF_PID=$!
 trap 'kill ${PF_PID} 2>/dev/null || true' EXIT
 
-for i in $(seq 1 20); do
+for i in $(seq 1 30); do
   if curl -sf -u "${KESTRA_USER}:${KESTRA_PASS}" "${KESTRA_PF}/api/v1/configs" >/dev/null 2>&1; then
     break
   fi
   sleep 2
 done
 
-export KESTRA_URL="${KESTRA_PF}"
-export KESTRA_PUBLIC_URL=""
+echo "==> API probe"
+for path in /api/v1/configs /api/v1/main/flows /api/v1/flows; do
+  code=$(curl -s -o /dev/null -w "%{http_code}" -u "${KESTRA_USER}:${KESTRA_PASS}" "${KESTRA_PF}${path}")
+  echo "  ${path} -> ${code}"
+done
 
 for flow in oke-health-check.yaml oke-deploy-simple.yaml oke-dagger-gitops-pipeline.yaml; do
   path="${ROOT}/kestra/flows/${flow}"
@@ -62,5 +90,4 @@ done
 
 echo ""
 echo "Test trigger oke-deploy-simple:"
-curl -sf -u "${KESTRA_USER}:${KESTRA_PASS}" -X POST \
-  "${KESTRA_PF}/api/v1/main/executions/main/oke-deploy-simple" | head -c 200 && echo ""
+trigger_test oke-deploy-simple main || true

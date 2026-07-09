@@ -76,7 +76,7 @@ spec:
 
         - name: kestra
 
-          image: docker.io/kestra/kestra:v0.21.9
+          image: docker.io/kestra/kestra:latest
 
           imagePullPolicy: IfNotPresent
 
