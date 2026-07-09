@@ -1,0 +1,75 @@
+id: oke-ocir-pipeline
+namespace: platform
+
+labels:
+  app: fastapi-minimal
+  env: oke
+
+description: |
+  OKE pipeline: clone -> Dagger build -> push to OCIR -> rollout restart on cluster.
+  Configure secrets in Kestra UI before running (github_token, dagger_cloud_token).
+
+inputs:
+  - id: git_branch
+    type: STRING
+    defaults: main
+  - id: ocir_image
+    type: STRING
+    defaults: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-fastapi:latest
+  - id: k8s_namespace
+    type: STRING
+    defaults: enlight-staging
+  - id: k8s_deployment
+    type: STRING
+    defaults: fastapi
+  - id: app_health_url
+    type: STRING
+    defaults: http://fastapi.enlight-staging.svc.cluster.local/health
+
+tasks:
+  - id: build-and-push
+    type: io.kestra.plugin.scripts.shell.Commands
+    containerImage: alpine:3.19
+    env:
+      GIT_BRANCH: "{{ inputs.git_branch }}"
+      OCIR_IMAGE: "{{ inputs.ocir_image }}"
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    commands:
+      - |
+        set -euxo pipefail
+        apk add --no-cache curl bash git docker-cli
+        curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR=/usr/local/bin sh
+        dagger version
+        rm -rf /repo
+        git clone -b "$GIT_BRANCH" "https://kirtiprasad2003:${{ secret('github_token') }}@github.com/kirtiprasad2003/fastapi-minimal-poc.git" /repo
+        cd /repo
+        dagger run -- docker build -t "$OCIR_IMAGE" .
+        echo "${{ secret('ocir_auth_token') }}" | docker login ap-mumbai-1.ocir.io -u "${{ secret('ocir_username') }}" --password-stdin
+        dagger run -- docker push "$OCIR_IMAGE"
+    timeout: PT30M
+
+  - id: rollout
+    type: io.kestra.plugin.scripts.shell.Commands
+    containerImage: bitnami/kubectl:latest
+    commands:
+      - kubectl rollout restart deployment/{{ inputs.k8s_deployment }} -n {{ inputs.k8s_namespace }}
+      - kubectl rollout status deployment/{{ inputs.k8s_deployment }} -n {{ inputs.k8s_namespace }} --timeout=180s
+    timeout: PT5M
+
+  - id: wait
+    type: io.kestra.plugin.core.flow.Sleep
+    duration: PT30S
+
+  - id: health-check
+    type: io.kestra.plugin.core.http.Request
+    uri: "{{ inputs.app_health_url }}"
+    method: GET
+    timeout: PT30S
+
+  - id: done
+    type: io.kestra.plugin.core.log.Log
+    message: |
+      OKE deploy complete.
+      Image: {{ inputs.ocir_image }}
+      Health: {{ inputs.app_health_url }}

@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Terraform
+oke/terraform/.terraform/
+oke/terraform/terraform.tfvars
+*.tfstate
+*.tfstate.*
+
+# Secrets / local
+.env
+kestra/.env
+*.pem
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/

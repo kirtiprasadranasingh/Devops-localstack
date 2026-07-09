@@ -1,0 +1,24 @@
+# ArgoCD at /gitops on the same hostname (apply after 07-install-argocd.ps1).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-paths
+  namespace: argocd
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: PLACEHOLDER_HOST
+      http:
+        paths:
+          - path: /gitops(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80

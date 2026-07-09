@@ -1,0 +1,174 @@
+# Kestra OSS with plugins + basic-auth (required for console → API).
+
+apiVersion: v1
+
+kind: Service
+
+metadata:
+
+  name: kestra
+
+  namespace: enlight-platform
+
+  labels:
+
+    app: kestra
+
+spec:
+
+  type: ClusterIP
+
+  selector:
+
+    app: kestra
+
+  ports:
+
+    - name: http
+
+      port: 8080
+
+      targetPort: 8080
+
+---
+
+apiVersion: apps/v1
+
+kind: Deployment
+
+metadata:
+
+  name: kestra
+
+  namespace: enlight-platform
+
+  labels:
+
+    app: kestra
+
+spec:
+
+  replicas: 1
+
+  strategy:
+
+    type: Recreate
+
+  selector:
+
+    matchLabels:
+
+      app: kestra
+
+  template:
+
+    metadata:
+
+      labels:
+
+        app: kestra
+
+    spec:
+
+      serviceAccountName: kestra-server
+
+      containers:
+
+        - name: kestra
+
+          image: docker.io/kestra/kestra:latest
+
+          imagePullPolicy: IfNotPresent
+
+          args:
+
+            - server
+
+            - local
+
+          ports:
+
+            - containerPort: 8080
+
+          env:
+
+            - name: KESTRA_CONFIGURATION
+
+              value: |
+
+                kestra:
+
+                  tutorialFlows:
+
+                    enabled: false
+
+                  server:
+
+                    basic-auth:
+
+                      username: admin@enlightlab.com
+
+                      password: enlight-demo
+
+          volumeMounts:
+
+            - name: kestra-data
+
+              mountPath: /app/storage
+
+            - name: kestra-db
+
+              mountPath: /app/data
+
+          resources:
+
+            requests:
+
+              cpu: 200m
+
+              memory: 1Gi
+
+            limits:
+
+              cpu: 1000m
+
+              memory: 2Gi
+
+          startupProbe:
+
+            tcpSocket:
+
+              port: 8080
+
+            failureThreshold: 60
+
+            periodSeconds: 10
+
+          readinessProbe:
+
+            tcpSocket:
+
+              port: 8080
+
+            periodSeconds: 10
+
+          livenessProbe:
+
+            tcpSocket:
+
+              port: 8080
+
+            initialDelaySeconds: 120
+
+            periodSeconds: 30
+
+      volumes:
+
+        - name: kestra-data
+
+          emptyDir: {}
+
+        - name: kestra-db
+
+          emptyDir: {}
+

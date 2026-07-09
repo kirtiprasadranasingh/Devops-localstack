@@ -1,0 +1,21 @@
+# Demo app on its own hostname (same LB IP). Apply in enlight-staging namespace.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-host
+  namespace: enlight-staging
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: app.PLACEHOLDER_HOST
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: fastapi
+                port:
+                  number: 80

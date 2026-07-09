@@ -1,0 +1,32 @@
+# Phase 1 — one free-tier LoadBalancer IP, hostname routing
+# DNS: point ALL hosts below to the SAME ingress EXTERNAL-IP
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: devopslocalstack
+  namespace: enlight-platform
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: devopslocalstack.enlightlab.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: enlight-console
+                port:
+                  number: 3100
+    - host: app.devopslocalstack.enlightlab.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: fastapi-minimal
+                port:
+                  number: 8000

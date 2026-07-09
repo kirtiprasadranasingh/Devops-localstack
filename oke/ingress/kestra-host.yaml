@@ -1,0 +1,22 @@
+# Kestra needs its own hostname (SPA assets break under /kestra path rewrite).
+# Works on nip.io: kestra.144-24-100-85.nip.io → same LB IP as console.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kestra-host
+  namespace: enlight-platform
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: kestra.PLACEHOLDER_HOST
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kestra
+                port:
+                  number: 8080

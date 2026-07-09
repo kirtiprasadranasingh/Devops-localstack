@@ -1,0 +1,24 @@
+# ArgoCD at argocd.enlightlab.com (production DNS on shared LB IP).
+# Apply after ArgoCD is installed in namespace argocd.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-enlightlab
+  namespace: argocd
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: argocd.enlightlab.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80

@@ -1,0 +1,50 @@
+id: oke-deploy-rollout
+namespace: main
+
+description: |
+  Phase 2 — health check, rollout, health check (same as oke-deploy-simple).
+  Use after you push a new image to OCIR manually.
+
+inputs:
+  - id: k8s_namespace
+    type: STRING
+    defaults: enlight-staging
+  - id: k8s_deployment
+    type: STRING
+    defaults: fastapi
+  - id: app_health_url
+    type: STRING
+    defaults: http://fastapi.enlight-staging.svc.cluster.local/health
+  - id: ocir_image
+    type: STRING
+    defaults: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-fastapi:latest
+
+tasks:
+  - id: health-before
+    type: io.kestra.plugin.core.http.Request
+    uri: "{{ inputs.app_health_url }}"
+    method: GET
+    timeout: PT30S
+
+  - id: rollout
+    type: io.kestra.plugin.kubernetes.kubectl.Restart
+    namespace: "{{ inputs.k8s_namespace }}"
+    resourceType: Deployment
+    resourcesNames:
+      - "{{ inputs.k8s_deployment }}"
+
+  - id: wait
+    type: io.kestra.plugin.core.flow.Sleep
+    duration: PT30S
+
+  - id: health-after
+    type: io.kestra.plugin.core.http.Request
+    uri: "{{ inputs.app_health_url }}"
+    method: GET
+    timeout: PT30S
+
+  - id: done
+    type: io.kestra.plugin.core.log.Log
+    message: |
+      Rollout complete for {{ inputs.ocir_image }}.
+      Demo app: http://app.144-24-100-85.nip.io

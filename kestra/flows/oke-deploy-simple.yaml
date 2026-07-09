@@ -1,0 +1,90 @@
+id: oke-deploy-simple
+
+namespace: main
+
+
+
+description: |
+
+  OKE deploy — health check, rolling restart, health check.
+
+  Uses open-source Kestra kubernetes plugin (no Enterprise runner).
+
+
+
+inputs:
+
+  - id: k8s_namespace
+
+    type: STRING
+
+    defaults: enlight-staging
+
+  - id: k8s_deployment
+
+    type: STRING
+
+    defaults: fastapi
+
+  - id: app_health_url
+
+    type: STRING
+
+    defaults: http://fastapi.enlight-staging.svc.cluster.local/health
+
+
+
+tasks:
+
+  - id: health-before
+
+    type: io.kestra.plugin.core.http.Request
+
+    uri: "{{ inputs.app_health_url }}"
+
+    method: GET
+
+    timeout: PT30S
+
+
+
+  - id: rollout
+
+    type: io.kestra.plugin.kubernetes.kubectl.Restart
+
+    namespace: "{{ inputs.k8s_namespace }}"
+
+    resourceType: Deployment
+
+    resourcesNames:
+
+      - "{{ inputs.k8s_deployment }}"
+
+
+
+  - id: wait
+
+    type: io.kestra.plugin.core.flow.Sleep
+
+    duration: PT30S
+
+
+
+  - id: health-after
+
+    type: io.kestra.plugin.core.http.Request
+
+    uri: "{{ inputs.app_health_url }}"
+
+    method: GET
+
+    timeout: PT30S
+
+
+
+  - id: done
+
+    type: io.kestra.plugin.core.log.Log
+
+    message: "Rollout complete — app health verified."
+

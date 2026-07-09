@@ -1,0 +1,48 @@
+id: minimal-deploy
+namespace: platform
+
+labels:
+  app: fastapi-minimal
+  env: poc
+
+description: |
+  Minimal PoC flow: trigger Dokploy redeploy, then verify /health.
+  Dokploy builds from your GitHub repo (Dockerfile in fastapi-minimal-poc).
+
+inputs:
+  - id: dokploy_deploy_webhook_url
+    type: STRING
+    required: true
+    description: Dokploy deploy webhook URL for your Application
+  - id: app_health_url
+    type: STRING
+    required: true
+    description: e.g. http://localhost:8000/health or https://your-domain/health
+
+tasks:
+  - id: trigger-dokploy-deploy
+    type: io.kestra.plugin.scripts.shell.Commands
+    containerImage: curlimages/curl:8.8.0
+    commands:
+      - |
+        set -e
+        echo "Triggering Dokploy deploy..."
+        curl -fsS -X POST "{{ inputs.dokploy_deploy_webhook_url }}"
+
+  - id: wait-for-startup
+    type: io.kestra.plugin.core.flow.Sleep
+    duration: PT30S
+
+  - id: verify-health
+    type: io.kestra.plugin.scripts.shell.Commands
+    containerImage: curlimages/curl:8.8.0
+    commands:
+      - |
+        set -e
+        echo "Checking {{ inputs.app_health_url }}"
+        curl -fsS "{{ inputs.app_health_url }}"
+
+errors:
+  - id: deployment-failed
+    type: io.kestra.plugin.core.log.Log
+    message: "Minimal deploy failed at {{ taskrun.id }}"

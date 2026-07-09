@@ -1,0 +1,31 @@
+# Windows / Docker Desktop friendly (no host /proc,/sys mounts - those often crash on Windows)
+services:
+  netdata:
+    image: netdata/netdata:stable
+    container_name: netdata
+    hostname: platform-poc-host
+    restart: unless-stopped
+    ports:
+      - "19999:19999"
+    environment:
+      NETDATA_LISTENER_PORT: "19999"
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - netdataconfig:/etc/netdata
+      - netdatalib:/var/lib/netdata
+      - netdatacache:/var/cache/netdata
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:19999/api/v1/info >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 90s
+
+volumes:
+  netdataconfig:
+  netdatalib:
+  netdatacache:

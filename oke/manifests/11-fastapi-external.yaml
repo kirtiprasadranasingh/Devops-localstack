@@ -1,0 +1,17 @@
+# Reuse existing FastAPI from enlight-staging (selfheal.enlightlab.com/staging).
+# No new FastAPI deployment — ingress path /app proxies to this service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: enlight-fastapi
+  namespace: enlight-platform
+  labels:
+    app: enlight-fastapi
+spec:
+  type: ExternalName
+  externalName: fastapi.enlight-staging.svc.cluster.local
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP

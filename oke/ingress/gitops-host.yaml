@@ -1,0 +1,24 @@
+# ArgoCD on its own subdomain (same LB IP as console).
+# URL: http://gitops.144-24-100-85.nip.io
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gitops-host
+  namespace: argocd
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: gitops.PLACEHOLDER_HOST
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80

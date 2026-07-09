@@ -1,0 +1,23 @@
+services:
+  console:
+    build: .
+    container_name: enlight-console
+    ports:
+      - "3100:3100"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      MODE: local
+      KESTRA_URL: http://host.docker.internal:8085
+      DOKPLOY_URL: http://host.docker.internal:3000
+      REGISTRY_URL: http://host.docker.internal:5000
+      NETDATA_URL: http://host.docker.internal:19999
+      APP_HEALTH_URL: http://host.docker.internal:8000/health
+    networks:
+      - enlight-net
+    restart: unless-stopped
+
+networks:
+  enlight-net:
+    name: enlight-net
+    driver: bridge

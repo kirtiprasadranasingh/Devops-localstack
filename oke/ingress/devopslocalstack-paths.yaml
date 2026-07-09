@@ -1,0 +1,21 @@
+# Console ingress — app and kestra use their own subdomains (see kestra-host.yaml, app-host.yaml).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: devopslocalstack-paths
+  namespace: enlight-platform
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: PLACEHOLDER_HOST
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: enlight-console
+                port:
+                  number: 3100

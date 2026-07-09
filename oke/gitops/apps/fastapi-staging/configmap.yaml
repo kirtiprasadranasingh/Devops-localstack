@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: enlight-demo-info
+  namespace: enlight-staging
+  labels:
+    app: fastapi
+    managed-by: argocd
+data:
+  platform: enlight-lab
+  demo_url: http://app.144-24-100-85.nip.io
+  health_path: /health
+  description: GitOps-managed demo metadata (safe — does not replace running FastAPI)

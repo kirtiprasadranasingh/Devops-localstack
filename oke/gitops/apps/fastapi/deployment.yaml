@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-minimal
+  namespace: enlight-platform
+  labels:
+    app: fastapi-minimal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fastapi-minimal
+  template:
+    metadata:
+      labels:
+        app: fastapi-minimal
+    spec:
+      containers:
+        - name: api
+          image: PLACEHOLDER_OCIR_FASTAPI
+          ports:
+            - containerPort: 8000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-minimal
+  namespace: enlight-platform
+spec:
+  type: ClusterIP
+  selector:
+    app: fastapi-minimal
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

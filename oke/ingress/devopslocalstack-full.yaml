@@ -1,0 +1,61 @@
+# Phase 2 — full stack on same single LoadBalancer IP
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: devopslocalstack
+  namespace: enlight-platform
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: devopslocalstack.enlightlab.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: enlight-console
+                port:
+                  number: 3100
+    - host: app.devopslocalstack.enlightlab.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: fastapi-minimal
+                port:
+                  number: 8000
+    - host: kestra.devopslocalstack.enlightlab.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kestra
+                port:
+                  number: 8080
+    - host: gitops.devopslocalstack.enlightlab.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80
+    - host: metrics.devopslocalstack.enlightlab.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 80

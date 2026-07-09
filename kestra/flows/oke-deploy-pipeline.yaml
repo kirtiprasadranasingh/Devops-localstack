@@ -1,0 +1,100 @@
+id: oke-deploy-pipeline
+namespace: main
+
+description: |
+  OKE workflow — build image with Kaniko, push to OCIR, rollout app, verify health.
+  Required Kestra secrets: GITHUB_TOKEN, OCIR_USERNAME, OCIR_TOKEN
+
+labels:
+  env: oke
+  project: enlight-lab
+
+inputs:
+  - id: git_branch
+    type: STRING
+    defaults: main
+  - id: git_repo
+    type: STRING
+    defaults: https://github.com/kirtiprasad2003/fastapi-minimal-poc.git
+  - id: ocir_image
+    type: STRING
+    defaults: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-fastapi:latest
+  - id: k8s_namespace
+    type: STRING
+    defaults: enlight-staging
+  - id: k8s_deployment
+    type: STRING
+    defaults: fastapi
+  - id: app_health_url
+    type: STRING
+    defaults: http://fastapi.enlight-staging.svc.cluster.local/health
+
+tasks:
+  - id: health-before
+    type: io.kestra.plugin.core.http.Request
+    uri: "{{ inputs.app_health_url }}"
+    method: GET
+    timeout: PT30S
+
+  - id: clone-repo
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.kubernetes.Kubernetes
+      namespace: enlight-platform
+      serviceAccountName: kestra-runner
+    containerImage: alpine/git:latest
+    outputFiles:
+      - repo/**
+    commands:
+      - git clone --depth 1 -b {{ inputs.git_branch }} "{{ inputs.git_repo }}" /tmp/repo
+      - cp -r /tmp/repo /working-dir/repo
+    timeout: PT10M
+
+  - id: build-and-push
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.kubernetes.Kubernetes
+      namespace: enlight-platform
+      serviceAccountName: kestra-runner
+    containerImage: gcr.io/kaniko-project/executor:v1.23.2
+    inputFiles:
+      repo: "{{ outputs['clone-repo'].outputFiles['repo'] }}"
+    env:
+      OCIR_USER: "{{ secret('OCIR_USERNAME') }}"
+      OCIR_PASS: "{{ secret('OCIR_TOKEN') }}"
+    commands:
+      - |
+        set -eux
+        mkdir -p /kaniko/.docker
+        AUTH=$(printf '%s:%s' "$OCIR_USER" "$OCIR_PASS" | base64 | tr -d '\n')
+        printf '{"auths":{"ap-mumbai-1.ocir.io":{"auth":"%s"}}}' "$AUTH" > /kaniko/.docker/config.json
+        /kaniko/executor \
+          --context=dir:///working-dir/repo \
+          --dockerfile=/working-dir/repo/Dockerfile \
+          --destination={{ inputs.ocir_image }} \
+          --cache=false
+    timeout: PT30M
+
+  - id: rollout
+    type: io.kestra.plugin.kubernetes.kubectl.Restart
+    namespace: "{{ inputs.k8s_namespace }}"
+    resourceType: Deployment
+    resourcesNames:
+      - "{{ inputs.k8s_deployment }}"
+
+  - id: wait
+    type: io.kestra.plugin.core.flow.Sleep
+    duration: PT20S
+
+  - id: health-after
+    type: io.kestra.plugin.core.http.Request
+    uri: "{{ inputs.app_health_url }}"
+    method: GET
+    timeout: PT30S
+
+  - id: done
+    type: io.kestra.plugin.core.log.Log
+    message: |
+      Deploy complete.
+      Image: {{ inputs.ocir_image }}
+      Health: {{ inputs.app_health_url }}

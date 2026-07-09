@@ -1,0 +1,22 @@
+# Grafana on its own subdomain (same LB IP as console).
+# URL: http://metrics.144-24-100-85.nip.io
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: metrics-host
+  namespace: monitoring
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: metrics.PLACEHOLDER_HOST
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kube-prometheus-stack-grafana
+                port:
+                  number: 80

@@ -1,0 +1,46 @@
+# Grafana at /metrics on the same hostname as the console (after 09-install-monitoring.ps1).
+
+apiVersion: networking.k8s.io/v1
+
+kind: Ingress
+
+metadata:
+
+  name: grafana-paths
+
+  namespace: monitoring
+
+  annotations:
+
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+
+    nginx.ingress.kubernetes.io/use-regex: "true"
+
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+
+spec:
+
+  ingressClassName: nginx
+
+  rules:
+
+    - host: PLACEHOLDER_HOST
+
+      http:
+
+        paths:
+
+          - path: /metrics(/|$)(.*)
+
+            pathType: ImplementationSpecific
+
+            backend:
+
+              service:
+
+                name: kube-prometheus-stack-grafana
+
+                port:
+
+                  number: 80
+

@@ -1,0 +1,88 @@
+services:
+  kestra:
+    image: kestra/kestra:latest
+    pull_policy: always
+    user: "root"
+    command: server standalone
+    ports:
+      - "8085:8080"
+      - "8086:8081"
+    env_file:
+      - .env
+    environment:
+      DOKPLOY_URL: ${DOKPLOY_URL}
+      DOKPLOY_TOKEN: ${DOKPLOY_TOKEN}
+      DOKPLOY_APPLICATION_ID: ${DOKPLOY_APPLICATION_ID}
+      GITHUB_USERNAME: ${GITHUB_USERNAME}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      REGISTRY: ${REGISTRY}
+      REGISTRY_HOST: ${REGISTRY_HOST}
+      GIT_REPO: ${GIT_REPO}
+      APP_HEALTH_URL: ${APP_HEALTH_URL}
+      KESTRA_CONFIGURATION: |
+        datasources:
+          postgres:
+            url: jdbc:postgresql://postgres:5432/kestra
+            driverClassName: org.postgresql.Driver
+            username: kestra
+            password: kestrapass
+        kestra:
+          server:
+            basic-auth:
+              enabled: false
+          repository:
+            type: postgres
+          storage:
+            type: local
+            local:
+              base-path: "/app/storage"
+          queue:
+            type: postgres
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - kestra-data:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      registry:
+        condition: service_started
+    networks:
+      - kestra-net
+
+  registry:
+    image: registry:2
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - registry-data:/var/lib/registry
+    networks:
+      kestra-net:
+        aliases:
+          - registry
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: kestra
+      POSTGRES_USER: kestra
+      POSTGRES_PASSWORD: kestrapass
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kestra"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - kestra-db:/var/lib/postgresql/data
+    networks:
+      - kestra-net
+
+volumes:
+  kestra-data:
+  kestra-db:
+  registry-data:
+
+networks:
+  kestra-net:
+    driver: bridge
+    name: kestra-net
