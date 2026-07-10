@@ -2,7 +2,7 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v26";
+export const CONSOLE_VERSION = "v27";
 
 export const HOME_STEPS = [
   {
@@ -218,10 +218,19 @@ export function mergeTaskStates(apiTasks, kestraLines, milestones, jobMeta) {
 
   if (milestones.done) tm["run-pipeline-job"] = tm["run-pipeline-job"] || "SUCCESS";
 
+  // Kestra continues after K8s job: wait-pipeline → health-after → done
+  if (jobMeta?.status === "complete" && milestones.done) {
+    if (tm["wait-pipeline"] === "RUNNING") {
+      /* still in GitOps wait */
+    } else if (!tm["wait-pipeline"] && !tm.__exec && tm["health-after"] !== "SUCCESS") {
+      tm["wait-pipeline"] = "RUNNING";
+    }
+  }
+
   return tm;
 }
 
-export function resolvePhases(taskMap, execState, milestones, jobMeta) {
+export function resolvePhases(taskMap, execState, milestones, jobMeta, apiTasks) {
   const tm = taskMap;
   const job = tm["run-pipeline-job"];
   const wait = tm["wait-pipeline"];
@@ -230,7 +239,11 @@ export function resolvePhases(taskMap, execState, milestones, jobMeta) {
   const inferredExec = tm.__exec || execState;
   const jobPhase = jobMeta?.status;
 
-  if (inferredExec === "SUCCESS" || done === "SUCCESS") {
+  const tracked = (apiTasks || []).filter((t) => t.id && t.state);
+  const allTasksSuccess =
+    tracked.length >= 3 && tracked.every((t) => t.state === "SUCCESS");
+
+  if (allTasksSuccess || inferredExec === "SUCCESS" || done === "SUCCESS") {
     return CLIENT_PIPELINE.map((step) => ({ ...step, status: "success" }));
   }
 

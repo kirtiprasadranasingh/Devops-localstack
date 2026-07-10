@@ -17,6 +17,7 @@ from .kestra_client import (
     flow_exists,
     get_execution,
     get_execution_logs,
+    parse_execution_summary,
     get_flow,
     make_client,
     parse_flow_meta,
@@ -139,7 +140,7 @@ async def health() -> dict[str, str]:
         "status": "ok",
         "service": settings.app_name,
         "mode": settings.mode,
-        "console_version": "v26",
+        "console_version": "v27",
     }
 
 
@@ -400,37 +401,14 @@ async def execution_status(execution_id: str) -> dict[str, Any]:
             )
             if not data:
                 raise HTTPException(status_code=404, detail="Execution not found")
-            state = data.get("state", {})
-            current = state.get("current") if isinstance(state, dict) else state
-            task_runs = data.get("taskRunList") or []
-            tasks = []
-            for tr in task_runs:
-                tid = tr.get("taskId") or tr.get("id")
-                if not tid:
-                    continue
-                tstate = tr.get("state") or {}
-                current_state = tstate.get("current") if isinstance(tstate, dict) else tstate
-                tasks.append(
-                    {
-                        "id": tid,
-                        "state": current_state,
-                        "duration": tr.get("duration"),
-                    }
-                )
-            if not current or current == "RUNNING":
-                if tasks and all(t.get("state") == "SUCCESS" for t in tasks if t.get("state")):
-                    current = "SUCCESS"
-                elif any(t.get("state") in ("FAILED", "KILLED") for t in tasks):
-                    current = "FAILED"
-            if any(t.get("id") == "done" and t.get("state") == "SUCCESS" for t in tasks):
-                current = "SUCCESS"
+            summary = parse_execution_summary(data)
             return {
                 "execution_id": execution_id,
-                "flow_id": data.get("flowId"),
-                "state": current,
+                "flow_id": summary.get("flow_id") or data.get("flowId"),
+                "state": summary["state"],
                 "url": settings.kestra_execution_url(execution_id, data.get("flowId")),
                 "error": _execution_error(data),
-                "tasks": tasks,
+                "tasks": summary["tasks"],
             }
     except HTTPException:
         raise
@@ -480,9 +458,17 @@ async def execution_logs(execution_id: str) -> dict[str, Any]:
 
     kestra_lines: list[dict[str, Any]] = []
     kestra_error: str | None = None
+    execution_summary: dict[str, Any] = {"state": None, "tasks": [], "flow_id": None}
     if settings.kestra_username and settings.kestra_password:
         try:
             async with kestra_client(timeout=15.0) as client:
+                raw = await get_execution(
+                    client,
+                    settings.kestra_url,
+                    settings.kestra_namespace,
+                    execution_id,
+                )
+                execution_summary = parse_execution_summary(raw)
                 kestra_lines = await get_execution_logs(
                     client,
                     settings.kestra_url,
@@ -495,6 +481,7 @@ async def execution_logs(execution_id: str) -> dict[str, Any]:
     job = get_job_logs(K8S_DEMO_NAMESPACE, execution_id, tail=200)
     return {
         "execution_id": execution_id,
+        "execution": execution_summary,
         "kestra": kestra_lines,
         "job": job,
         "kestra_error": kestra_error,

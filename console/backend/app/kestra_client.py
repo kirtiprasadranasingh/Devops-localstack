@@ -202,17 +202,56 @@ async def get_execution(
     execution_id: str,
 ) -> dict[str, Any] | None:
     base = base_url.rstrip("/")
-    for path in (
-        f"/api/v1/main/executions/{namespace}/{execution_id}",
-        f"/api/v1/executions/{namespace}/{execution_id}",
-    ):
-        try:
-            response = await client.get(f"{base}{path}")
-            if response.status_code == 200:
-                return response.json()
-        except Exception:  # noqa: BLE001
-            continue
+    for eid in dict.fromkeys([execution_id, execution_id.lower(), execution_id.upper()]):
+        for path in (
+            f"/api/v1/main/executions/{namespace}/{eid}",
+            f"/api/v1/executions/{namespace}/{eid}",
+        ):
+            try:
+                response = await client.get(f"{base}{path}")
+                if response.status_code == 200:
+                    return response.json()
+            except Exception:  # noqa: BLE001
+                continue
     return None
+
+
+def parse_execution_summary(data: dict[str, Any] | None) -> dict[str, Any]:
+    """Normalize Kestra execution JSON into state + task list for the console UI."""
+    if not data:
+        return {"state": None, "tasks": [], "flow_id": None}
+
+    state = data.get("state") or {}
+    current = state.get("current") if isinstance(state, dict) else state
+    tasks: list[dict[str, Any]] = []
+    for tr in data.get("taskRunList") or []:
+        tid = tr.get("taskId") or tr.get("id")
+        if not tid:
+            continue
+        tstate = tr.get("state") or {}
+        current_state = tstate.get("current") if isinstance(tstate, dict) else tstate
+        tasks.append(
+            {
+                "id": tid,
+                "state": current_state,
+                "duration": tr.get("duration"),
+            }
+        )
+
+    if not current or current == "RUNNING":
+        tracked = [t for t in tasks if t.get("state")]
+        if tracked and all(t.get("state") == "SUCCESS" for t in tracked):
+            current = "SUCCESS"
+        elif any(t.get("state") in ("FAILED", "KILLED") for t in tasks):
+            current = "FAILED"
+    if any(t.get("id") == "done" and t.get("state") == "SUCCESS" for t in tasks):
+        current = "SUCCESS"
+
+    return {
+        "state": current,
+        "tasks": tasks,
+        "flow_id": data.get("flowId"),
+    }
 
 
 async def trigger_execution(

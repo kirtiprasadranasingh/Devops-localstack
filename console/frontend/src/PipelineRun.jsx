@@ -89,6 +89,15 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
             setJobMeta(data.job || null);
             setJobLogs(normalizeLogText(data.job?.logs || ""));
             setKestraLines(data.kestra || []);
+            if (data.execution) {
+              setExecution((prev) => ({
+                execution_id: executionId,
+                flow_id: data.execution.flow_id || prev?.flow_id,
+                state: data.execution.state ?? prev?.state,
+                tasks: data.execution.tasks?.length ? data.execution.tasks : prev?.tasks || [],
+                url: prev?.url,
+              }));
+            }
           } else if (logRes.status >= 400) {
             setJobMeta({ status: "error", error: `Logs API ${logRes.status}` });
           }
@@ -127,8 +136,8 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
   const failed = execState === "FAILED" || execState === "KILLED";
 
   const phases = useMemo(
-    () => resolvePhases(mergedTasks, execState, milestones, jobMeta),
-    [mergedTasks, execState, milestones, jobMeta]
+    () => resolvePhases(mergedTasks, execState, milestones, jobMeta, tasks),
+    [mergedTasks, execState, milestones, jobMeta, tasks]
   );
 
   const activePhase = phases.find((p) => p.status === "running");
