@@ -3,7 +3,7 @@
 set -euo pipefail
 
 NS="${NS:-enlight-platform}"
-PREFERRED="${CONSOLE_IMAGE:-ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:v36}"
+PREFERRED="${CONSOLE_IMAGE:-ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:v37}"
 FALLBACK="${CONSOLE_FALLBACK:-ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:v20}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"

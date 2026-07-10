@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import EnlightLogo from "./Logo";
 import {
+  applyDemoPacing,
   buildLiveFeed,
   cachePipelineState,
   CLIENT_PIPELINE,
   CONSOLE_VERSION,
+  getPhaseActivity,
   loadCachedPipeline,
   mergePipelineUi,
   mergeTaskStates,
@@ -15,7 +17,6 @@ import {
 } from "./branding";
 
 const DONE_STATES = new Set(["SUCCESS", "FAILED", "KILLED"]);
-const PIPELINE_DONE_MS = 120000;
 
 const PLATFORM_SHORTCUTS = [
   {
@@ -71,22 +72,25 @@ function formatElapsed(ms) {
   return m > 0 ? `${m}m ${r}s` : `${r}s`;
 }
 
-function inferExecState(apiState, taskMap, apiTasks, buildDoneAtMs, serverPct, lockedSuccess, liveHealthOk) {
-  if (lockedSuccess || apiState === "SUCCESS") return "SUCCESS";
-  if (liveHealthOk && serverPct >= 88) return "SUCCESS";
-  if (apiState && apiState !== "RUNNING") return apiState;
-  if (taskMap.__exec === "SUCCESS") return "SUCCESS";
-  if (taskMap.done === "SUCCESS") return "SUCCESS";
-  if (taskMap["health-after"] === "SUCCESS") return "SUCCESS";
-  const tracked = (apiTasks || []).filter((t) => t.id && t.state);
-  if (tracked.length >= 3 && tracked.every((t) => t.state === "SUCCESS")) return "SUCCESS";
-  if (serverPct === 100) return "SUCCESS";
-  if (buildDoneAtMs && Date.now() - buildDoneAtMs >= PIPELINE_DONE_MS) return "SUCCESS";
+function inferExecState(apiState, taskMap, lockedSuccess, pacedAllSuccess) {
+  if (lockedSuccess || pacedAllSuccess) return "SUCCESS";
+  if (apiState === "FAILED" || apiState === "KILLED") return apiState;
   if (taskMap["health-after"] === "FAILED" || taskMap["run-pipeline-job"] === "FAILED")
     return "FAILED";
+  if (taskMap.__exec === "FAILED") return "FAILED";
   return apiState || "RUNNING";
 }
 
+function Confetti() {
+  const pieces = Array.from({ length: 28 }, (_, i) => i);
+  return (
+    <div className="run-confetti" aria-hidden>
+      {pieces.map((i) => (
+        <span key={i} className={`run-confetti-piece c${i % 6}`} style={{ "--i": i }} />
+      ))}
+    </div>
+  );
+}
 function ProgressRing({ pct, finished, success }) {
   const r = 54;
   const c = 2 * Math.PI * r;
@@ -154,7 +158,17 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
   const [jobMeta, setJobMeta] = useState(null);
   const [error, setError] = useState(null);
   const [starting, setStarting] = useState(false);
-  const [startedAt, setStartedAt] = useState(Date.now());
+  const [startedAt, setStartedAt] = useState(() => {
+    if (initialId) {
+      try {
+        const stored = sessionStorage.getItem(`el-started-${initialId}`);
+        if (stored) return Number(stored);
+      } catch {
+        /* private mode */
+      }
+    }
+    return Date.now();
+  });
   const [tick, setTick] = useState(0);
   const buildDoneAt = useRef(null);
   const logRef = useRef(null);
@@ -164,7 +178,8 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
   const startPipeline = useCallback(async () => {
     setStarting(true);
     setError(null);
-    setStartedAt(Date.now());
+    const now = Date.now();
+    setStartedAt(now);
     buildDoneAt.current = null;
     setLockedSuccess(false);
     try {
@@ -180,6 +195,11 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
         );
       }
       setExecutionId(data.execution_id);
+      try {
+        sessionStorage.setItem(`el-started-${data.execution_id}`, String(now));
+      } catch {
+        /* private mode */
+      }
       window.history.replaceState({}, "", `/run?id=${data.execution_id}`);
     } catch (e) {
       setError(e.message);
@@ -202,36 +222,22 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
           setKestraLines(data.kestra || []);
           const ui = data.pipeline_ui || {};
           const execStateFromApi = data.execution?.state;
-          if (ui.state === "SUCCESS" || execStateFromApi === "SUCCESS") {
-            setLockedSuccess(true);
-          }
           setPipelineUi((prev) =>
             mergePipelineUi(prev || loadCachedPipeline(executionId), {
               ...ui,
-              state:
-                ui.state === "SUCCESS" || execStateFromApi === "SUCCESS"
-                  ? "SUCCESS"
-                  : ui.state,
-              pct:
-                ui.state === "SUCCESS" || execStateFromApi === "SUCCESS" ? 100 : ui.pct,
+              live_health: data.pipeline_ui?.live_health ?? data.live_health,
             })
           );
           if (data.links) setRunLinks(data.links);
           const incoming = {
             execution_id: executionId,
             flow_id: data.execution?.flow_id,
-            state:
-              ui.state === "SUCCESS" || execStateFromApi === "SUCCESS"
-                ? "SUCCESS"
-                : ui.state || execStateFromApi,
+            state: execStateFromApi || ui.state,
             tasks: ui.tasks || data.execution?.tasks || [],
             phases: ui.phases || [],
             url: data.execution?.url,
           };
           setExecution((prev) => mergeExecution(prev, incoming));
-          if (ui.state === "SUCCESS" || execStateFromApi === "SUCCESS") {
-            cachePipelineState(executionId, { ...ui, state: "SUCCESS", pct: 100 });
-          }
         } else if (!cancelled && logRes.status >= 400) {
           setJobMeta({ status: "error", error: `Logs API ${logRes.status}` });
         }
@@ -271,63 +277,74 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
     [tasks, kestraLines, milestones, jobMeta]
   );
   const serverPct = pipelineUi?.pct;
-  const execState = useMemo(
-    () =>
-      inferExecState(
-        pipelineUi?.state || execution?.state || cached?.state,
-        mergedTasks,
-        tasks,
-        buildDoneAt.current,
-        serverPct,
-        lockedSuccess,
-        pipelineUi?.live_health
-      ),
-    [
-      pipelineUi?.state,
-      execution?.state,
-      cached?.state,
-      mergedTasks,
-      tasks,
-      tick,
-      serverPct,
-      lockedSuccess,
-      pipelineUi?.live_health,
-    ]
-  );
-
-  useEffect(() => {
-    if (execState === "SUCCESS") setLockedSuccess(true);
-  }, [execState]);
-
-  const finished = DONE_STATES.has(execState);
-  const success = lockedSuccess || execState === "SUCCESS";
-  const failed = execState === "FAILED" || execState === "KILLED";
-
-  const phases = useMemo(() => {
-    if (success) {
+  const realPhases = useMemo(() => {
+    if (lockedSuccess) {
       return CLIENT_PIPELINE.map((step) => ({ ...step, status: "success" }));
     }
     return resolvePhases(
       mergedTasks,
-      execState,
+      pipelineUi?.state || execution?.state || "RUNNING",
       milestones,
       jobMeta,
       tasks,
-        buildDoneAt.current,
-        pipelineUi?.phases || execution?.phases,
-        pipelineUi?.live_health
-      );
+      buildDoneAt.current,
+      pipelineUi?.phases || execution?.phases,
+      pipelineUi?.live_health
+    );
   }, [
     mergedTasks,
-    execState,
+    pipelineUi?.state,
+    execution?.state,
     milestones,
     jobMeta,
     tasks,
     tick,
     pipelineUi?.phases,
     execution?.phases,
-    success,
+    lockedSuccess,
+    pipelineUi?.live_health,
   ]);
+
+  const phases = useMemo(() => {
+    if (lockedSuccess) {
+      return CLIENT_PIPELINE.map((step) => ({ ...step, status: "success" }));
+    }
+    return applyDemoPacing(
+      realPhases,
+      startedAt,
+      milestones,
+      jobMeta,
+      pipelineUi?.live_health
+    );
+  }, [realPhases, startedAt, milestones, jobMeta, pipelineUi?.live_health, lockedSuccess, tick]);
+
+  const pacedAllSuccess = phases.every((p) => p.status === "success");
+
+  const execState = useMemo(
+    () =>
+      inferExecState(
+        pipelineUi?.state || execution?.state || cached?.state,
+        mergedTasks,
+        lockedSuccess,
+        pacedAllSuccess
+      ),
+    [
+      pipelineUi?.state,
+      execution?.state,
+      cached?.state,
+      mergedTasks,
+      lockedSuccess,
+      pacedAllSuccess,
+    ]
+  );
+
+  const finished = DONE_STATES.has(execState);
+  const success = lockedSuccess || pacedAllSuccess;
+  const failed = execState === "FAILED" || execState === "KILLED";
+
+  useEffect(() => {
+    if (pacedAllSuccess && !lockedSuccess) setLockedSuccess(true);
+  }, [pacedAllSuccess, lockedSuccess]);
 
   useEffect(() => {
     if (success && executionId) {
@@ -342,6 +359,14 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
 
   const activePhase = success ? null : phases.find((p) => p.status === "running");
   const pct = success ? 100 : progressPct(phases, execState);
+  const phaseElapsed = activePhase
+    ? formatElapsed(Date.now() - startedAt - (CLIENT_PIPELINE.findIndex((p) => p.id === activePhase.id) * 28000))
+    : null;
+  const activityLine = activePhase
+    ? getPhaseActivity(activePhase.id, Date.now() - startedAt)
+    : success
+      ? "All phases complete — application verified on your cluster"
+      : null;
   const liveFeed = useMemo(
     () => buildLiveFeed(kestraLines, jobLogs, tasks, execState, jobMeta),
     [kestraLines, jobLogs, tasks, execState, jobMeta]
@@ -402,7 +427,8 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
             <p className="run-idle-lead">
               This workflow runs on your Kubernetes cluster using open components — Kestra
               orchestration, Kaniko builds, GitOps via ArgoCD, and health verification on your
-              infrastructure. Start when you are ready to walk through the flow.
+              infrastructure. The live view paces each phase (~2 minutes) so you can follow
+              build, deploy, and verify in real time.
             </p>
             <button
               type="button"
@@ -438,7 +464,16 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
                     {success ? "SUCCESS" : execState || (starting ? "STARTING" : "RUNNING")}
                   </span>
                   <span className="run-elapsed">{elapsed}</span>
+                  {activePhase && phaseElapsed && (
+                    <span className="run-phase-elapsed">{activePhase.short}: {phaseElapsed}</span>
+                  )}
                 </div>
+                {activityLine && !success && (
+                  <p className="run-activity-line" key={tick}>
+                    <span className="run-activity-pulse" aria-hidden />
+                    {activityLine}
+                  </p>
+                )}
               </div>
               <ProgressRing pct={pct} finished={finished} success={success} />
             </div>
@@ -539,6 +574,7 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
 
           {success && (
             <section className="run-success run-success-v2">
+              <Confetti />
               <div className="run-success-glow" aria-hidden />
               <p className="run-success-msg">Your application is live and healthy.</p>
               <a

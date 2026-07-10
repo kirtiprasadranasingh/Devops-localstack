@@ -2,7 +2,46 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v36";
+export const CONSOLE_VERSION = "v37";
+
+/** Minimum elapsed time before each phase can show success (demo pacing). */
+export const DEMO_PACE_MS = {
+  triggerDone: 2500,
+  buildDone: 52000,
+  deployDone: 88000,
+  verifyDone: 115000,
+  minSuccess: 120000,
+};
+
+/** Rotating subtitles while a phase is running — Linear / Vercel-style storytelling. */
+export const PHASE_ACTIVITY = {
+  trigger: "Deployment request received on your cluster",
+  build: [
+    "Cloning repository from GitHub…",
+    "Kaniko build job scheduled on Kubernetes…",
+    "Installing dependencies inside the cluster…",
+    "Packaging and pushing image to registry…",
+  ],
+  deploy: [
+    "GitOps manifest committed to GitHub…",
+    "ArgoCD detecting repository changes…",
+    "Rolling out new pods on the cluster…",
+    "Waiting for deployment to stabilize…",
+  ],
+  verify: [
+    "Probing live application health endpoint…",
+    "Confirming pods are ready and serving traffic…",
+    "Validating response from your infrastructure…",
+  ],
+};
+
+export function getPhaseActivity(phaseId, phaseStartedMs) {
+  const hint = PHASE_ACTIVITY[phaseId];
+  if (!hint) return PHASE_ACTIVITY.trigger;
+  if (typeof hint === "string") return hint;
+  const idx = Math.min(Math.floor((phaseStartedMs || 0) / 9000), hint.length - 1);
+  return hint[idx];
+}
 
 export const VALUE_PILLARS = [
   {
@@ -395,16 +434,6 @@ export function resolvePhases(
     return CLIENT_PIPELINE.map((step) => ({ ...step, status: "success" }));
   }
 
-  if (liveHealthOk && milestones.gitPushed) {
-    return CLIENT_PIPELINE.map((step) => ({
-      ...step,
-      status:
-        step.id === "build" && !milestones.done && jobPhase !== "complete"
-          ? "running"
-          : "success",
-    }));
-  }
-
   if (milestones.gitPushed && !milestones.done && jobPhase !== "complete") {
     return CLIENT_PIPELINE.map((step) => ({
       ...step,
@@ -477,7 +506,7 @@ export function resolvePhases(
   else s.deploy = "pending";
 
   if (health === "FAILED" || done === "FAILED") s.verify = "failed";
-  else if (health === "SUCCESS" || done === "SUCCESS" || liveHealthOk) s.verify = "success";
+  else if (health === "SUCCESS" || done === "SUCCESS") s.verify = "success";
   else if (wait === "SUCCESS" || health === "RUNNING" || milestones.gitPushed) s.verify = "running";
   else s.verify = "pending";
 
@@ -491,6 +520,47 @@ export function resolvePhases(
   return CLIENT_PIPELINE.map((step) => ({
     ...step,
     status: s[step.id] || "pending",
+  }));
+}
+
+/**
+ * Slows phase transitions for a realistic demo (~2 min) while still tracking real milestones.
+ * Skipped when all real phases already failed.
+ */
+export function applyDemoPacing(phases, startedAt, milestones, jobMeta, liveHealthOk) {
+  if (phases.some((p) => p.status === "failed")) return phases;
+  const elapsed = Date.now() - startedAt;
+  const buildDone = milestones?.done || jobMeta?.status === "complete";
+  const gitDone = milestones?.gitPushed;
+  const healthReady =
+    liveHealthOk ||
+    phases.find((p) => p.id === "verify")?.status === "success" ||
+    jobMeta?.status === "complete";
+
+  function phaseStatus(id) {
+    switch (id) {
+      case "trigger":
+        return elapsed >= DEMO_PACE_MS.triggerDone ? "success" : "running";
+      case "build":
+        if (elapsed < DEMO_PACE_MS.triggerDone) return "pending";
+        if (!buildDone || elapsed < DEMO_PACE_MS.buildDone) return "running";
+        return "success";
+      case "deploy":
+        if (elapsed < DEMO_PACE_MS.buildDone || !buildDone) return "pending";
+        if (!gitDone || elapsed < DEMO_PACE_MS.deployDone) return "running";
+        return "success";
+      case "verify":
+        if (elapsed < DEMO_PACE_MS.deployDone || !gitDone) return "pending";
+        if (elapsed < DEMO_PACE_MS.verifyDone || !healthReady) return "running";
+        return "success";
+      default:
+        return "pending";
+    }
+  }
+
+  return phases.map((p) => ({
+    ...p,
+    status: p.status === "failed" ? "failed" : phaseStatus(p.id),
   }));
 }
 
