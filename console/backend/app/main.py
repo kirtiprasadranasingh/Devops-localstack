@@ -139,7 +139,7 @@ async def health() -> dict[str, str]:
         "status": "ok",
         "service": settings.app_name,
         "mode": settings.mode,
-        "console_version": "v22",
+        "console_version": "v23",
     }
 
 
@@ -401,19 +401,29 @@ async def execution_status(execution_id: str) -> dict[str, Any]:
             if not data:
                 raise HTTPException(status_code=404, detail="Execution not found")
             state = data.get("state", {})
-            current = state.get("current")
-            tasks = [
-                {
-                    "id": tr.get("taskId"),
-                    "state": (tr.get("state") or {}).get("current"),
-                    "duration": tr.get("duration"),
-                }
-                for tr in (data.get("taskRunList") or [])
-                if tr.get("taskId")
-            ]
+            current = state.get("current") if isinstance(state, dict) else state
+            task_runs = data.get("taskRunList") or []
+            tasks = []
+            for tr in task_runs:
+                tid = tr.get("taskId") or tr.get("id")
+                if not tid:
+                    continue
+                tstate = tr.get("state") or {}
+                current_state = tstate.get("current") if isinstance(tstate, dict) else tstate
+                tasks.append(
+                    {
+                        "id": tid,
+                        "state": current_state,
+                        "duration": tr.get("duration"),
+                    }
+                )
             if not current or current == "RUNNING":
-                if tasks and all(t.get("state") == "SUCCESS" for t in tasks):
+                if tasks and all(t.get("state") == "SUCCESS" for t in tasks if t.get("state")):
                     current = "SUCCESS"
+                elif any(t.get("state") in ("FAILED", "KILLED") for t in tasks):
+                    current = "FAILED"
+            if any(t.get("id") == "done" and t.get("state") == "SUCCESS" for t in tasks):
+                current = "SUCCESS"
             return {
                 "execution_id": execution_id,
                 "flow_id": data.get("flowId"),

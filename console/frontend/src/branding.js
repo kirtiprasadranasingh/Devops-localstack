@@ -2,7 +2,7 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v22";
+export const CONSOLE_VERSION = "v23";
 
 export const HOME_STEPS = [
   {
@@ -143,11 +143,15 @@ export function humanizeKestraLine(raw) {
   return trimmed;
 }
 
-export function mergeTaskStates(apiTasks, kestraLines, milestones) {
+export function mergeTaskStates(apiTasks, kestraLines, milestones, jobMeta) {
   const tm = {};
   for (const t of apiTasks || []) {
     if (t.id && t.state) tm[t.id] = t.state;
   }
+
+  if (jobMeta?.status === "complete") tm["run-pipeline-job"] = "SUCCESS";
+  else if (jobMeta?.status === "failed") tm["run-pipeline-job"] = "FAILED";
+  else if (jobMeta?.status === "running") tm["run-pipeline-job"] = tm["run-pipeline-job"] || "RUNNING";
 
   for (const line of kestraLines || []) {
     const msg = typeof line === "string" ? line : line?.message;
@@ -178,37 +182,42 @@ export function mergeTaskStates(apiTasks, kestraLines, milestones) {
   return tm;
 }
 
-export function resolvePhases(taskMap, execState, milestones) {
+export function resolvePhases(taskMap, execState, milestones, jobMeta) {
   const tm = taskMap;
   const job = tm["run-pipeline-job"];
   const wait = tm["wait-pipeline"];
   const health = tm["health-after"];
   const done = tm.done;
   const inferredExec = tm.__exec || execState;
+  const jobPhase = jobMeta?.status;
+
+  if (inferredExec === "SUCCESS" || done === "SUCCESS") {
+    return CLIENT_PIPELINE.map((step) => ({ ...step, status: "success" }));
+  }
 
   const s = {};
   s.trigger = "success";
 
-  if (job === "FAILED") s.build = "failed";
-  else if (job === "SUCCESS" || milestones.done) s.build = "success";
-  else if (job === "RUNNING" || milestones.kanikoStarted || milestones.cloned) s.build = "running";
+  if (job === "FAILED" || jobPhase === "failed") s.build = "failed";
+  else if (job === "SUCCESS" || jobPhase === "complete" || milestones.done) s.build = "success";
+  else if (job === "RUNNING" || jobPhase === "running" || milestones.kanikoStarted) s.build = "running";
+  else if (wait === "SUCCESS" || wait === "RUNNING" || health || done) s.build = "success";
   else if (!job && inferredExec === "RUNNING") s.build = "running";
   else s.build = "pending";
 
   if (wait === "FAILED") s.deploy = "failed";
-  else if (wait === "SUCCESS") s.deploy = "success";
-  else if (s.build === "success" || milestones.done) s.deploy = "running";
+  else if (wait === "SUCCESS" || health === "SUCCESS" || health === "RUNNING" || done === "SUCCESS")
+    s.deploy = "success";
+  else if (s.build === "success") s.deploy = "running";
   else s.deploy = "pending";
 
   if (health === "FAILED" || done === "FAILED") s.verify = "failed";
-  else if (inferredExec === "SUCCESS" || (health === "SUCCESS" && done === "SUCCESS"))
-    s.verify = "success";
+  else if (health === "SUCCESS" || done === "SUCCESS") s.verify = "success";
   else if (wait === "SUCCESS" || health === "RUNNING") s.verify = "running";
   else s.verify = "pending";
 
   if (inferredExec === "FAILED") {
-    if (tm["health-before"] === "FAILED") s.build = "failed";
-    else if (job === "FAILED") s.build = "failed";
+    if (job === "FAILED") s.build = "failed";
     else if (wait === "FAILED") s.deploy = "failed";
     else if (health === "FAILED") s.verify = "failed";
     else if (s.verify === "running") s.verify = "failed";
@@ -230,7 +239,7 @@ export function progressPct(phases, execState) {
   return Math.min(pct, 99);
 }
 
-export function buildLiveFeed(kestraLines, jobLogs, apiTasks) {
+export function buildLiveFeed(kestraLines, jobLogs, apiTasks, execState) {
   const seen = new Set();
   const out = [];
 
@@ -238,6 +247,10 @@ export function buildLiveFeed(kestraLines, jobLogs, apiTasks) {
     if (!text || seen.has(text)) return;
     seen.add(text);
     out.push({ text, kind });
+  }
+
+  if (execState && execState !== "RUNNING") {
+    add(`Pipeline ${execState.toLowerCase()}`, execState === "SUCCESS" ? "ok" : "error");
   }
 
   for (const t of apiTasks || []) {

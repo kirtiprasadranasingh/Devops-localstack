@@ -70,10 +70,18 @@ a:hover {
 .el-logo {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.5rem;
   font-weight: 700;
   font-size: 1.15rem;
   color: var(--el-purple);
+}
+
+.el-logo-img {
+  display: block;
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .el-logo-mark {
@@ -1190,6 +1198,14 @@ code {
 
 .run-log-line.kestra {
   color: #94a3b8;
+}
+
+.run-log-line.ok {
+  color: #86efac;
+}
+
+.run-log-line.error {
+  color: #fca5a5;
 }
 
 .run-log-line.muted {

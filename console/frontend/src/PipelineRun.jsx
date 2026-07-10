@@ -18,10 +18,13 @@ function formatElapsed(ms) {
   return m > 0 ? `${m}m ${r}s` : `${r}s`;
 }
 
-function inferExecState(apiState, taskMap) {
+function inferExecState(apiState, taskMap, apiTasks) {
   if (apiState && apiState !== "RUNNING") return apiState;
   if (taskMap.__exec) return taskMap.__exec;
   if (taskMap.done === "SUCCESS") return "SUCCESS";
+  if (taskMap["health-after"] === "SUCCESS" && taskMap["wait-pipeline"] === "SUCCESS") return "SUCCESS";
+  const tracked = (apiTasks || []).filter((t) => t.id && t.state);
+  if (tracked.length >= 3 && tracked.every((t) => t.state === "SUCCESS")) return "SUCCESS";
   if (taskMap["health-after"] === "FAILED" || taskMap["run-pipeline-job"] === "FAILED")
     return "FAILED";
   return apiState || "RUNNING";
@@ -110,24 +113,24 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
   const tasks = execution?.tasks || [];
   const milestones = parseLogMilestones(jobLogs);
   const mergedTasks = useMemo(
-    () => mergeTaskStates(tasks, kestraLines, milestones),
-    [tasks, kestraLines, milestones]
+    () => mergeTaskStates(tasks, kestraLines, milestones, jobMeta),
+    [tasks, kestraLines, milestones, jobMeta]
   );
-  const execState = inferExecState(execution?.state, mergedTasks);
+  const execState = inferExecState(execution?.state, mergedTasks, tasks);
   const finished = DONE_STATES.has(execState);
   const success = execState === "SUCCESS";
   const failed = execState === "FAILED" || execState === "KILLED";
 
   const phases = useMemo(
-    () => resolvePhases(mergedTasks, execState, milestones),
-    [mergedTasks, execState, milestones]
+    () => resolvePhases(mergedTasks, execState, milestones, jobMeta),
+    [mergedTasks, execState, milestones, jobMeta]
   );
 
   const activePhase = phases.find((p) => p.status === "running");
   const pct = progressPct(phases, execState);
   const liveFeed = useMemo(
-    () => buildLiveFeed(kestraLines, jobLogs, tasks),
-    [kestraLines, jobLogs, tasks]
+    () => buildLiveFeed(kestraLines, jobLogs, tasks, execState),
+    [kestraLines, jobLogs, tasks, execState]
   );
   const elapsed = formatElapsed(Date.now() - startedAt);
 
