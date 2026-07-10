@@ -52,7 +52,7 @@ spec:
               DOCKERFILE="\${BUILD_CTX}/Dockerfile.oke"
               test -f "\${DOCKERFILE}" || DOCKERFILE="\${BUILD_CTX}/Dockerfile"
               test -f "\${BUILD_CTX}/backend/requirements.txt"
-              test -d "\${BUILD_CTX}/frontend/dist"
+              test -f "\${BUILD_CTX}/frontend/package.json"
               echo "==> Build context:"
               ls -la "\${BUILD_CTX}/"
               ls -la "\${BUILD_CTX}/backend/"

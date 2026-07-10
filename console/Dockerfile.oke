@@ -1,4 +1,11 @@
-# OKE/Kaniko build — uses committed frontend/dist (no Node.js pull on cluster).
+# OKE/Kaniko build — compile frontend in-image so UI always matches source.
+FROM node:20-alpine AS frontend
+WORKDIR /build
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -7,7 +14,7 @@ COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app ./app
-COPY frontend/dist ./frontend/dist
+COPY --from=frontend /build/dist ./frontend/dist
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 3100
