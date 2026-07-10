@@ -2,7 +2,35 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v33";
+export const CONSOLE_VERSION = "v34";
+
+/** Platform status cards — icon, tagline, accent */
+export const STATUS_META = {
+  console: {
+    icon: "⊞",
+    tag: "Control plane",
+    hint: "This dashboard",
+    accent: "purple",
+  },
+  application: {
+    icon: "◉",
+    tag: "Workload",
+    hint: "Deployed FastAPI service",
+    accent: "green",
+  },
+  kestra: {
+    icon: "⚡",
+    tag: "Orchestration",
+    hint: "Build & deploy automation",
+    accent: "amber",
+  },
+  gitops: {
+    icon: "⟳",
+    tag: "GitOps",
+    hint: "ArgoCD cluster sync",
+    accent: "blue",
+  },
+};
 
 export const HOME_STEPS = [
   {
@@ -105,17 +133,16 @@ export function parseLogMilestones(logs) {
 export function cachePipelineState(execId, payload) {
   if (!execId || !payload?.state) return;
   if (!["SUCCESS", "FAILED", "KILLED"].includes(payload.state)) return;
+  const data = JSON.stringify({
+    state: payload.state,
+    tasks: payload.tasks || [],
+    phases: payload.phases || [],
+    pct: payload.pct,
+    savedAt: Date.now(),
+  });
   try {
-    sessionStorage.setItem(
-      `el-pipeline-${execId}`,
-      JSON.stringify({
-        state: payload.state,
-        tasks: payload.tasks || [],
-        phases: payload.phases || [],
-        pct: payload.pct,
-        savedAt: Date.now(),
-      })
-    );
+    sessionStorage.setItem(`el-pipeline-${execId}`, data);
+    localStorage.setItem(`el-pipeline-${execId}`, data);
   } catch {
     /* private mode */
   }
@@ -124,11 +151,38 @@ export function cachePipelineState(execId, payload) {
 export function loadCachedPipeline(execId) {
   if (!execId) return null;
   try {
-    const raw = sessionStorage.getItem(`el-pipeline-${execId}`);
+    const raw =
+      sessionStorage.getItem(`el-pipeline-${execId}`) ||
+      localStorage.getItem(`el-pipeline-${execId}`);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
+}
+
+export function mergePipelineUi(prev, incoming) {
+  if (!incoming) return prev;
+  const rank = (s) => (s === "SUCCESS" ? 3 : s === "FAILED" || s === "KILLED" ? 2 : 1);
+  if (prev && rank(prev.state) > rank(incoming.state || "RUNNING")) {
+    return {
+      ...incoming,
+      ...prev,
+      state: prev.state,
+      pct: prev.state === "SUCCESS" ? 100 : (prev.pct ?? incoming.pct),
+      phases:
+        prev.state === "SUCCESS"
+          ? [
+              { id: "trigger", status: "success" },
+              { id: "build", status: "success" },
+              { id: "deploy", status: "success" },
+              { id: "verify", status: "success" },
+            ]
+          : prev.phases?.length
+            ? prev.phases
+            : incoming.phases,
+    };
+  }
+  return { ...prev, ...incoming };
 }
 
 export function applyServerPhases(serverPhases, clientPhases) {

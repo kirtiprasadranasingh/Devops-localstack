@@ -3,8 +3,10 @@ import EnlightLogo from "./Logo";
 import {
   buildLiveFeed,
   cachePipelineState,
+  CLIENT_PIPELINE,
   CONSOLE_VERSION,
   loadCachedPipeline,
+  mergePipelineUi,
   mergeTaskStates,
   normalizeLogText,
   parseLogMilestones,
@@ -39,7 +41,6 @@ const PLATFORM_SHORTCUTS = [
     icon: "⚡",
     linkKey: "kestra",
     phase: "build",
-    useExecutionUrl: true,
   },
 ];
 
@@ -52,7 +53,7 @@ function mergeExecution(prev, incoming) {
       ...prev,
       state: prev.state,
       tasks: incoming.tasks?.length ? incoming.tasks : prev.tasks,
-      phases: incoming.phases?.length ? incoming.phases : prev.phases,
+      phases: incoming.phases?.length ? prev.phases : incoming.phases,
     };
   }
   return {
@@ -70,13 +71,12 @@ function formatElapsed(ms) {
   return m > 0 ? `${m}m ${r}s` : `${r}s`;
 }
 
-function inferExecState(apiState, taskMap, apiTasks, buildDoneAtMs, serverPct) {
-  if (apiState === "SUCCESS") return "SUCCESS";
+function inferExecState(apiState, taskMap, apiTasks, buildDoneAtMs, serverPct, lockedSuccess) {
+  if (lockedSuccess || apiState === "SUCCESS") return "SUCCESS";
   if (apiState && apiState !== "RUNNING") return apiState;
   if (taskMap.__exec === "SUCCESS") return "SUCCESS";
   if (taskMap.done === "SUCCESS") return "SUCCESS";
   if (taskMap["health-after"] === "SUCCESS") return "SUCCESS";
-  if (taskMap["health-after"] === "SUCCESS" && taskMap["wait-pipeline"] === "SUCCESS") return "SUCCESS";
   const tracked = (apiTasks || []).filter((t) => t.id && t.state);
   if (tracked.length >= 3 && tracked.every((t) => t.state === "SUCCESS")) return "SUCCESS";
   if (serverPct === 100) return "SUCCESS";
@@ -146,22 +146,26 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
   const [pipelineUi, setPipelineUi] = useState(
     cached ? { state: cached.state, pct: cached.pct, phases: cached.phases } : null
   );
+  const [lockedSuccess, setLockedSuccess] = useState(cached?.state === "SUCCESS");
   const [runLinks, setRunLinks] = useState({});
   const [jobLogs, setJobLogs] = useState("");
   const [kestraLines, setKestraLines] = useState([]);
   const [jobMeta, setJobMeta] = useState(null);
   const [error, setError] = useState(null);
-  const [starting, setStarting] = useState(!initialId);
+  const [starting, setStarting] = useState(false);
   const [startedAt, setStartedAt] = useState(Date.now());
   const [tick, setTick] = useState(0);
   const buildDoneAt = useRef(null);
   const logRef = useRef(null);
+
+  const idle = !executionId && !starting;
 
   const startPipeline = useCallback(async () => {
     setStarting(true);
     setError(null);
     setStartedAt(Date.now());
     buildDoneAt.current = null;
+    setLockedSuccess(false);
     try {
       const res = await fetch("/api/deploy", {
         method: "POST",
@@ -184,10 +188,6 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
   }, []);
 
   useEffect(() => {
-    if (!initialId && !executionId) startPipeline();
-  }, [initialId, executionId, startPipeline]);
-
-  useEffect(() => {
     if (!executionId) return undefined;
     let cancelled = false;
 
@@ -200,18 +200,35 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
           setJobLogs(normalizeLogText(data.job?.logs || ""));
           setKestraLines(data.kestra || []);
           const ui = data.pipeline_ui || {};
-          setPipelineUi(ui);
+          const execStateFromApi = data.execution?.state;
+          if (ui.state === "SUCCESS" || execStateFromApi === "SUCCESS") {
+            setLockedSuccess(true);
+          }
+          setPipelineUi((prev) =>
+            mergePipelineUi(prev || loadCachedPipeline(executionId), {
+              ...ui,
+              state:
+                ui.state === "SUCCESS" || execStateFromApi === "SUCCESS"
+                  ? "SUCCESS"
+                  : ui.state,
+              pct:
+                ui.state === "SUCCESS" || execStateFromApi === "SUCCESS" ? 100 : ui.pct,
+            })
+          );
           if (data.links) setRunLinks(data.links);
           const incoming = {
             execution_id: executionId,
             flow_id: data.execution?.flow_id,
-            state: ui.state || data.execution?.state,
+            state:
+              ui.state === "SUCCESS" || execStateFromApi === "SUCCESS"
+                ? "SUCCESS"
+                : ui.state || execStateFromApi,
             tasks: ui.tasks || data.execution?.tasks || [],
             phases: ui.phases || [],
             url: data.execution?.url,
           };
           setExecution((prev) => mergeExecution(prev, incoming));
-          if (ui.state === "SUCCESS" || data.execution?.state === "SUCCESS") {
+          if (ui.state === "SUCCESS" || execStateFromApi === "SUCCESS") {
             cachePipelineState(executionId, { ...ui, state: "SUCCESS", pct: 100 });
           }
         } else if (!cancelled && logRes.status >= 400) {
@@ -260,16 +277,34 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
         mergedTasks,
         tasks,
         buildDoneAt.current,
-        serverPct
+        serverPct,
+        lockedSuccess
       ),
-    [pipelineUi?.state, execution?.state, cached?.state, mergedTasks, tasks, tick, serverPct]
+    [
+      pipelineUi?.state,
+      execution?.state,
+      cached?.state,
+      mergedTasks,
+      tasks,
+      tick,
+      serverPct,
+      lockedSuccess,
+    ]
   );
+
+  useEffect(() => {
+    if (execState === "SUCCESS") setLockedSuccess(true);
+  }, [execState]);
+
   const finished = DONE_STATES.has(execState);
-  const success = execState === "SUCCESS";
+  const success = lockedSuccess || execState === "SUCCESS";
   const failed = execState === "FAILED" || execState === "KILLED";
 
   const phases = useMemo(() => {
-    const resolved = resolvePhases(
+    if (success) {
+      return CLIENT_PIPELINE.map((step) => ({ ...step, status: "success" }));
+    }
+    return resolvePhases(
       mergedTasks,
       execState,
       milestones,
@@ -278,11 +313,17 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
       buildDoneAt.current,
       pipelineUi?.phases || execution?.phases
     );
-    if (success) {
-      return resolved.map((p) => ({ ...p, status: "success" }));
-    }
-    return resolved;
-  }, [mergedTasks, execState, milestones, jobMeta, tasks, tick, pipelineUi?.phases, execution?.phases, success]);
+  }, [
+    mergedTasks,
+    execState,
+    milestones,
+    jobMeta,
+    tasks,
+    tick,
+    pipelineUi?.phases,
+    execution?.phases,
+    success,
+  ]);
 
   useEffect(() => {
     if (success && executionId) {
@@ -309,15 +350,17 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
   const gitopsUrl = runLinks.gitops || platformLinks.gitops;
   const kestraUiUrl = runLinks.kestra || platformLinks.kestra;
 
-  const headline = starting
-    ? "Starting deployment…"
-    : success
-      ? "Deployment successful"
-      : failed
-        ? "Deployment failed"
-        : activePhase
-          ? `${activePhase.label} in progress…`
-          : "Pipeline running…";
+  const headline = idle
+    ? "Ready to deploy"
+    : starting
+      ? "Starting deployment…"
+      : success
+        ? "Deployment successful"
+        : failed
+          ? "Deployment failed"
+          : activePhase
+            ? `${activePhase.label} in progress…`
+            : "Pipeline running…";
 
   return (
     <div className="run-page run-page-v2">
@@ -336,7 +379,7 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
         </div>
         <span className="run-badge">
           Live · {CONSOLE_VERSION}
-          {!finished && <span className="run-pulse-dot" aria-hidden />}
+          {!finished && !idle && <span className="run-pulse-dot" aria-hidden />}
         </span>
       </header>
 
@@ -347,126 +390,163 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
         </div>
       )}
 
-      <section className="run-command-center">
-        <div className="run-command-grid">
-          <div className="run-command-copy">
+      {idle ? (
+        <section className="run-idle">
+          <div className="run-idle-inner">
             <p className="run-eyebrow">DEPLOYMENT PIPELINE</p>
-            <h1 className={success ? "run-headline-ok" : failed ? "run-headline-fail" : ""}>
-              {headline}
-            </h1>
-            <div className="run-meta-row">
-              <span className={`run-status-pill ${success ? "ok" : failed ? "fail" : "run"}`}>
-                {success ? "SUCCESS" : execState || (starting ? "STARTING" : "RUNNING")}
-              </span>
-              <span className="run-elapsed">{elapsed}</span>
+            <h1>Build → GitOps → Health check</h1>
+            <p className="run-idle-lead">
+              Review the four stages below, then start when you are ready. Progress and logs
+              stream live from Kubernetes and Kestra.
+            </p>
+            <button
+              type="button"
+              className="el-btn el-btn-primary el-btn-hero el-btn-glow"
+              onClick={startPipeline}
+            >
+              Start deployment →
+            </button>
+            <div className="run-idle-preview">
+              {CLIENT_PIPELINE.map((step) => (
+                <div key={step.id} className="run-idle-step">
+                  <span className="run-idle-num">{step.icon}</span>
+                  <div>
+                    <strong>{step.short || step.label}</strong>
+                    <span>{step.clientLine}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-          <ProgressRing pct={pct} finished={finished} success={success} />
-        </div>
-      </section>
+        </section>
+      ) : (
+        <>
+          <section className="run-command-center">
+            <div className="run-command-grid">
+              <div className="run-command-copy">
+                <p className="run-eyebrow">DEPLOYMENT PIPELINE</p>
+                <h1 className={success ? "run-headline-ok" : failed ? "run-headline-fail" : ""}>
+                  {headline}
+                </h1>
+                <div className="run-meta-row">
+                  <span className={`run-status-pill ${success ? "ok" : failed ? "fail" : "run"}`}>
+                    {success ? "SUCCESS" : execState || (starting ? "STARTING" : "RUNNING")}
+                  </span>
+                  <span className="run-elapsed">{elapsed}</span>
+                </div>
+              </div>
+              <ProgressRing pct={pct} finished={finished} success={success} />
+            </div>
+          </section>
 
-      <section className="run-orbit-pipeline">
-        <div className="run-orbit-track">
-          {phases.map((phase, i) => (
-            <div key={phase.id} className="run-orbit-step-wrap">
-              <article
-                className={`run-orbit-step ${phase.status} ${activePhase?.id === phase.id ? "active" : ""}`}
-              >
-                <div className="run-orbit-glow" aria-hidden />
-                <div className="run-orbit-node">
-                  {phase.status === "success" ? (
-                    <span className="run-h-check">✓</span>
-                  ) : phase.status === "failed" ? (
-                    <span className="run-h-fail">!</span>
-                  ) : phase.status === "running" ? (
-                    <span className="run-h-spinner" aria-hidden />
-                  ) : (
-                    <span className="run-orbit-num">{phase.icon}</span>
+          <section className="run-orbit-pipeline">
+            <div className="run-orbit-track">
+              {phases.map((phase, i) => (
+                <div key={phase.id} className="run-orbit-step-wrap">
+                  <article
+                    className={`run-orbit-step ${phase.status} ${activePhase?.id === phase.id ? "active" : ""}`}
+                  >
+                    <div className="run-orbit-glow" aria-hidden />
+                    <div className="run-orbit-node">
+                      {phase.status === "success" ? (
+                        <span className="run-h-check">✓</span>
+                      ) : phase.status === "failed" ? (
+                        <span className="run-h-fail">!</span>
+                      ) : phase.status === "running" ? (
+                        <span className="run-h-spinner" aria-hidden />
+                      ) : (
+                        <span className="run-orbit-num">{phase.icon}</span>
+                      )}
+                    </div>
+                    <h3>{phase.short || phase.label}</h3>
+                    <p>{phase.clientLine}</p>
+                  </article>
+                  {i < phases.length - 1 && (
+                    <div
+                      className={`run-orbit-beam ${phases[i].status === "success" ? "done" : phases[i].status === "running" ? "active" : ""}`}
+                      aria-hidden
+                    />
                   )}
                 </div>
-                <h3>{phase.short || phase.label}</h3>
-                <p>{phase.clientLine}</p>
-              </article>
-              {i < phases.length - 1 && (
-                <div
-                  className={`run-orbit-beam ${phases[i].status === "success" ? "done" : phases[i].status === "running" ? "active" : ""}`}
-                  aria-hidden
-                />
+              ))}
+            </div>
+          </section>
+
+          <section className="run-shortcuts">
+            <p className="run-shortcuts-label">PLATFORM LINKS</p>
+            <div className="run-shortcuts-grid">
+              {PLATFORM_SHORTCUTS.map((item) => {
+                const phaseId =
+                  item.phase === "verify"
+                    ? "verify"
+                    : item.phase === "deploy"
+                      ? "deploy"
+                      : "build";
+                const phaseDone = phaseStatus[phaseId] === "success" || success;
+                const phaseActive = phaseStatus[phaseId] === "running";
+                let href = platformLinks[item.linkKey] || "";
+                if (item.id === "gitops") href = gitopsUrl || href;
+                if (item.id === "kestra") href = kestraExecUrl || kestraUiUrl || href;
+                if (item.id === "app") href = resolvedAppUrl || href;
+                return (
+                  <ShortcutCard
+                    key={item.id}
+                    item={item}
+                    href={href}
+                    active={phaseActive}
+                    done={phaseDone}
+                  />
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="run-terminal">
+            <div className="run-terminal-chrome">
+              <span className="run-terminal-dot red" />
+              <span className="run-terminal-dot amber" />
+              <span className="run-terminal-dot green" />
+              <strong>Live activity</strong>
+              {jobMeta?.status && (
+                <span className={`run-job-st ${jobMeta.status}`}>{jobMeta.status}</span>
               )}
             </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="run-shortcuts">
-        <p className="run-shortcuts-label">PLATFORM LINKS</p>
-        <div className="run-shortcuts-grid">
-          {PLATFORM_SHORTCUTS.map((item) => {
-            const phaseId =
-              item.phase === "verify" ? "verify" : item.phase === "deploy" ? "deploy" : "build";
-            const phaseDone = phaseStatus[phaseId] === "success" || success;
-            const phaseActive = phaseStatus[phaseId] === "running";
-            let href = platformLinks[item.linkKey] || "";
-            if (item.id === "gitops") href = gitopsUrl || href;
-            if (item.id === "kestra") href = kestraExecUrl || kestraUiUrl || href;
-            if (item.id === "app") href = resolvedAppUrl || href;
-            return (
-              <ShortcutCard
-                key={item.id}
-                item={item}
-                href={href}
-                active={phaseActive}
-                done={phaseDone}
-              />
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="run-terminal">
-        <div className="run-terminal-chrome">
-          <span className="run-terminal-dot red" />
-          <span className="run-terminal-dot amber" />
-          <span className="run-terminal-dot green" />
-          <strong>Live activity</strong>
-          {jobMeta?.status && (
-            <span className={`run-job-st ${jobMeta.status}`}>{jobMeta.status}</span>
-          )}
-        </div>
-        <div className="run-logs run-logs-v2" ref={logRef}>
-          {liveFeed.length ? (
-            liveFeed.map((line, i) => (
-              <div key={`${line.kind}-${i}`} className={`run-log-line ${line.kind}`}>
-                {line.text}
-              </div>
-            ))
-          ) : (
-            <div className="run-log-line muted">
-              {starting
-                ? "Starting…"
-                : jobMeta?.hint ||
-                  (jobMeta?.status === "pending"
-                    ? "Waiting for pipeline job to start…"
-                    : "Connecting to pipeline logs…")}
+            <div className="run-logs run-logs-v2" ref={logRef}>
+              {liveFeed.length ? (
+                liveFeed.map((line, i) => (
+                  <div key={`${line.kind}-${i}`} className={`run-log-line ${line.kind}`}>
+                    {line.text}
+                  </div>
+                ))
+              ) : (
+                <div className="run-log-line muted">
+                  {starting
+                    ? "Starting…"
+                    : jobMeta?.hint ||
+                      (jobMeta?.status === "pending"
+                        ? "Waiting for pipeline job to start…"
+                        : "Connecting to pipeline logs…")}
+                </div>
+              )}
+              {!finished && <div className="run-log-cursor" aria-hidden />}
             </div>
-          )}
-          {!finished && <div className="run-log-cursor" aria-hidden />}
-        </div>
-      </section>
+          </section>
 
-      {success && (
-        <section className="run-success run-success-v2">
-          <div className="run-success-glow" aria-hidden />
-          <p className="run-success-msg">Your application is live and healthy.</p>
-          <a
-            href={resolvedAppUrl || "http://app.144-24-100-85.nip.io/"}
-            target="_blank"
-            rel="noreferrer"
-            className="el-btn el-btn-primary el-btn-glow"
-          >
-            Open live application →
-          </a>
-        </section>
+          {success && (
+            <section className="run-success run-success-v2">
+              <div className="run-success-glow" aria-hidden />
+              <p className="run-success-msg">Your application is live and healthy.</p>
+              <a
+                href={resolvedAppUrl || "http://app.144-24-100-85.nip.io/"}
+                target="_blank"
+                rel="noreferrer"
+                className="el-btn el-btn-primary el-btn-glow"
+              >
+                Open live application →
+              </a>
+            </section>
+          )}
+        </>
       )}
     </div>
   );

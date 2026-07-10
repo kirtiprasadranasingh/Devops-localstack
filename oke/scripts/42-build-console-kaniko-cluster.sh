@@ -3,7 +3,7 @@
 set -euo pipefail
 
 NS="${NS:-enlight-platform}"
-TAG="${CONSOLE_TAG:-v33}"
+TAG="${CONSOLE_TAG:-v34}"
 IMAGE="ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:${TAG}"
 BUILDER="ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v9"
 GIT_REPO="${GIT_REPO:-https://github.com/kirtiprasadranasingh/Devops-localstack.git}"

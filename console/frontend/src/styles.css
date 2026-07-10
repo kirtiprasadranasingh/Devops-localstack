@@ -70,41 +70,34 @@ a:hover {
 .el-logo {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   font-weight: 700;
-  font-size: 1.15rem;
+  font-size: 1.2rem;
   color: var(--el-purple);
+}
+
+.el-logo-lg {
+  gap: 0.45rem;
+  font-size: 1.35rem;
 }
 
 .el-logo-img {
   display: block;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   object-fit: contain;
   flex-shrink: 0;
+  background: transparent;
 }
 
-.el-logo-icon-wrap {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, rgba(238, 242, 255, 0.95), rgba(224, 231, 255, 0.7));
-  border: 1px solid rgba(88, 80, 236, 0.12);
-  flex-shrink: 0;
-}
-
-.el-logo-run .el-logo-icon-wrap {
-  background: linear-gradient(135deg, rgba(238, 242, 255, 0.85), rgba(255, 255, 255, 0.5));
-  box-shadow: 0 2px 8px rgba(88, 80, 236, 0.08);
+.el-logo-lg .el-logo-img {
+  width: 48px;
+  height: 48px;
 }
 
 .el-logo-run .el-logo-img {
-  width: 32px;
-  height: 32px;
-  mix-blend-mode: multiply;
+  width: 42px;
+  height: 42px;
 }
 
 .el-logo-mark {
@@ -115,6 +108,7 @@ a:hover {
 
 .el-logo-text {
   letter-spacing: -0.02em;
+  line-height: 1;
 }
 
 /* Buttons */
@@ -2317,4 +2311,301 @@ code {
   .el-btn-header {
     width: auto;
   }
+}
+
+/* Scroll reveal animations */
+.el-reveal-section .el-reveal-card {
+  opacity: 0;
+  transform: translateY(28px) scale(0.97);
+}
+
+.el-reveal-section.is-visible .el-reveal-card {
+  animation: el-reveal-in 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes el-reveal-in {
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.el-bento-trail {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--el-purple), transparent);
+  opacity: 0;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: opacity 0.3s;
+}
+
+.el-reveal-section.is-visible .el-bento-card .el-bento-trail {
+  animation: trail-grow 0.8s ease forwards;
+  animation-delay: inherit;
+}
+
+@keyframes trail-grow {
+  to {
+    opacity: 0.6;
+    transform: scaleX(1);
+  }
+}
+
+/* Platform status constellation */
+.el-status-section .el-section-title {
+  margin-bottom: 1.5rem;
+}
+
+.el-status-constellation {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+@media (max-width: 900px) {
+  .el-status-constellation {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .el-status-constellation {
+    grid-template-columns: 1fr;
+  }
+}
+
+.el-constellation-card {
+  position: relative;
+  overflow: hidden;
+  padding: 1.35rem 1.25rem 1.15rem;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--el-border);
+  border-radius: 18px;
+  transition:
+    transform 0.25s,
+    box-shadow 0.25s;
+}
+
+.el-status-section .el-reveal-card {
+  opacity: 0;
+  transform: translateY(24px);
+}
+
+.el-status-section.is-visible .el-reveal-card {
+  animation: el-reveal-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.el-constellation-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 40px rgba(88, 80, 236, 0.1);
+}
+
+.el-constellation-card.accent-purple {
+  border-top: 3px solid var(--el-purple);
+}
+
+.el-constellation-card.accent-green {
+  border-top: 3px solid #059669;
+}
+
+.el-constellation-card.accent-amber {
+  border-top: 3px solid #d97706;
+}
+
+.el-constellation-card.accent-blue {
+  border-top: 3px solid #2563eb;
+}
+
+.el-constellation-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.65rem;
+}
+
+.el-constellation-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  font-size: 1.15rem;
+  border-radius: 12px;
+  background: var(--el-purple-light);
+  color: var(--el-purple);
+}
+
+.el-constellation-card.accent-green .el-constellation-icon {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.el-constellation-card.accent-amber .el-constellation-icon {
+  background: #fffbeb;
+  color: #d97706;
+}
+
+.el-constellation-card.accent-blue .el-constellation-icon {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.el-constellation-pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d1d5db;
+}
+
+.el-constellation-pulse.ok {
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2);
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+.el-constellation-pulse.down {
+  background: #ef4444;
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.el-constellation-tag {
+  margin: 0 0 0.2rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--el-muted-light);
+}
+
+.el-constellation-card h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.el-constellation-hint {
+  margin: 0 0 0.85rem;
+  font-size: 0.78rem;
+  color: var(--el-muted);
+  line-height: 1.45;
+}
+
+.el-constellation-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--el-border);
+}
+
+.el-constellation-latency {
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--el-text);
+}
+
+.el-constellation-link {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.el-constellation-ring {
+  position: absolute;
+  top: -30px;
+  right: -30px;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 1px solid rgba(88, 80, 236, 0.08);
+  pointer-events: none;
+}
+
+/* Pipeline idle — manual start */
+.run-idle {
+  max-width: 720px;
+  margin: 2rem auto 4rem;
+  padding: 0 1.5rem;
+  text-align: center;
+}
+
+.run-idle-inner h1 {
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin: 0 0 1rem;
+}
+
+.run-idle-lead {
+  color: var(--el-muted);
+  font-size: 1rem;
+  line-height: 1.65;
+  margin: 0 0 1.75rem;
+}
+
+.run-idle-preview {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  margin-top: 2.5rem;
+  text-align: left;
+}
+
+@media (max-width: 560px) {
+  .run-idle-preview {
+    grid-template-columns: 1fr;
+  }
+}
+
+.run-idle-step {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 1rem 1.1rem;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(88, 80, 236, 0.12);
+  border-radius: 14px;
+  backdrop-filter: blur(8px);
+}
+
+.run-idle-num {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--el-purple-light);
+  color: var(--el-purple);
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+
+.run-idle-step strong {
+  display: block;
+  font-size: 0.88rem;
+  margin-bottom: 0.15rem;
+}
+
+.run-idle-step span {
+  font-size: 0.75rem;
+  color: var(--el-muted);
+  line-height: 1.4;
 }

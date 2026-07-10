@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import EnlightLogo from "./Logo";
-import { CONSOLE_VERSION, HOME_STATUS_KEYS, HOME_STEPS } from "./branding";
+import {
+  CONSOLE_VERSION,
+  HOME_STATUS_KEYS,
+  HOME_STEPS,
+  STATUS_META,
+} from "./branding";
 
 function ExternalLink({ href, children, className = "" }) {
   if (!href?.startsWith("http")) {
@@ -13,11 +18,36 @@ function ExternalLink({ href, children, className = "" }) {
   );
 }
 
+function useScrollReveal(threshold = 0.12) {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          obs.disconnect();
+        }
+      },
+      { threshold, rootMargin: "0px 0px -40px 0px" }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [threshold]);
+
+  return { ref, visible };
+}
+
 export default function Home({ onRunDemo }) {
   const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
   const [resetting, setResetting] = useState(false);
   const [resetMsg, setResetMsg] = useState(null);
+  const bentoReveal = useScrollReveal();
+  const statusReveal = useScrollReveal(0.08);
 
   const fetchStatus = useCallback(async () => {
     setError(null);
@@ -79,7 +109,7 @@ export default function Home({ onRunDemo }) {
 
       <header className="el-header el-header-v2">
         <a className="el-header-brand" href="/">
-          <EnlightLogo />
+          <EnlightLogo size="lg" />
         </a>
         <div className="el-header-actions">
           <button
@@ -96,7 +126,7 @@ export default function Home({ onRunDemo }) {
             {resetting ? "…" : "↺ Reset"}
           </button>
           <button type="button" className="el-btn el-btn-primary el-btn-header el-btn-glow" onClick={onRunDemo}>
-            Run demo →
+            Open pipeline →
           </button>
         </div>
       </header>
@@ -115,7 +145,7 @@ export default function Home({ onRunDemo }) {
           </p>
 
           <button type="button" className="el-btn el-btn-primary el-btn-hero el-btn-glow" onClick={onRunDemo}>
-            Launch deployment →
+            Open deployment pipeline →
           </button>
 
           <div className="el-stat-orbit">
@@ -136,42 +166,69 @@ export default function Home({ onRunDemo }) {
           </div>
         </section>
 
-        <section className="el-section el-section-v2">
+        <section
+          className={`el-section el-section-v2 el-reveal-section ${bentoReveal.visible ? "is-visible" : ""}`}
+          ref={bentoReveal.ref}
+        >
           <p className="el-section-label">HOW IT WORKS</p>
           <h2 className="el-section-title">Four stages from code to production</h2>
           <div className="el-bento">
             {HOME_STEPS.map((s, i) => (
-              <article key={s.step} className={`el-bento-card el-bento-${i + 1}`}>
+              <article
+                key={s.step}
+                className={`el-bento-card el-bento-${i + 1} el-reveal-card`}
+                style={{ animationDelay: `${i * 0.12}s` }}
+              >
                 <span className="el-bento-num">{s.step}</span>
                 <h3>{s.title}</h3>
                 <p>{s.body}</p>
                 <span className="el-bento-shine" aria-hidden />
+                <span className="el-bento-trail" aria-hidden />
               </article>
             ))}
           </div>
         </section>
 
-        <section className="el-section el-section-v2">
+        <section
+          className={`el-section el-section-v2 el-status-section ${statusReveal.visible ? "is-visible" : ""}`}
+          ref={statusReveal.ref}
+        >
           <p className="el-section-label">PLATFORM STATUS</p>
+          <h2 className="el-section-title">Your stack at a glance</h2>
           {error && <p className="el-error">{error}</p>}
           {status && (
-            <div className="el-status-orbit">
-              {HOME_STATUS_KEYS.filter((name) => status.services[name]).map((name) => {
+            <div className="el-status-constellation">
+              {HOME_STATUS_KEYS.filter((name) => status.services[name]).map((name, i) => {
                 const svc = status.services[name];
                 const label = status.service_labels?.[name] || name;
+                const meta = STATUS_META[name] || { icon: "◆", tag: "Service", hint: "", accent: "purple" };
                 return (
-                  <div key={name} className={`el-status-tile ${svc.ok ? "ok" : "down"}`}>
-                    <span className={`el-status-dot ${svc.ok ? "ok" : "down"}`} />
-                    <div>
-                      <strong>{label}</strong>
-                      <span>{svc.ok ? `${svc.latency_ms}ms` : "down"}</span>
+                  <article
+                    key={name}
+                    className={`el-constellation-card accent-${meta.accent} ${svc.ok ? "ok" : "down"} el-reveal-card`}
+                    style={{ animationDelay: `${i * 0.1}s` }}
+                  >
+                    <div className="el-constellation-top">
+                      <span className="el-constellation-icon" aria-hidden>
+                        {meta.icon}
+                      </span>
+                      <span className={`el-constellation-pulse ${svc.ok ? "ok" : "down"}`} />
                     </div>
-                    {links[name]?.startsWith("http") && (
-                      <ExternalLink href={links[name]} className="el-link-sm">
-                        Open →
-                      </ExternalLink>
-                    )}
-                  </div>
+                    <p className="el-constellation-tag">{meta.tag}</p>
+                    <h3>{label}</h3>
+                    <p className="el-constellation-hint">{meta.hint}</p>
+                    <div className="el-constellation-foot">
+                      <span className="el-constellation-latency">
+                        {svc.ok ? `${svc.latency_ms}ms` : "unreachable"}
+                      </span>
+                      {links[name]?.startsWith("http") && (
+                        <ExternalLink href={links[name]} className="el-constellation-link">
+                          Open →
+                        </ExternalLink>
+                      )}
+                    </div>
+                    <span className="el-constellation-ring" aria-hidden />
+                  </article>
                 );
               })}
             </div>

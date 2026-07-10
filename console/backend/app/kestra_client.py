@@ -371,6 +371,16 @@ def compute_pipeline_ui(
         state = "SUCCESS" if health == "SUCCESS" else "RUNNING"
         return {"state": state, "pct": pct, "tasks": tasks, "phases": phases}
 
+    # Refresh: K8s job finished + GitOps commit in logs — pipeline already ran end-to-end
+    if build_done and git_pushed and job.get("status") == "complete" and ex_state == "SUCCESS":
+        phases = [
+            {"id": "trigger", "status": "success"},
+            {"id": "build", "status": "success"},
+            {"id": "deploy", "status": "success"},
+            {"id": "verify", "status": "success"},
+        ]
+        return {"state": "SUCCESS", "pct": 100, "tasks": tasks, "phases": phases}
+
     if wait == "SUCCESS" or git_pushed:
         return {
             "state": "RUNNING",
