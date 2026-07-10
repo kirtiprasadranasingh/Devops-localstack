@@ -2,7 +2,7 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v38";
+export const CONSOLE_VERSION = "v39";
 
 /** Minimum elapsed time before each phase can show success (demo pacing). */
 export const DEMO_PACE_MS = {
@@ -565,13 +565,14 @@ export function applyDemoPacing(phases, startedAt, milestones, jobMeta, liveHeal
 }
 
 export function progressPct(phases, execState) {
-  const state = execState === "RUNNING" ? null : execState;
-  if (state === "SUCCESS") return 100;
-  const weights = { success: 1, running: 0.6, pending: 0, failed: 0 };
+  // Only 100% when every paced phase is success — ignore early backend SUCCESS.
+  if (phases.length && phases.every((p) => p.status === "success")) return 100;
+  const weights = { success: 1, running: 0.55, pending: 0, failed: 0 };
   const score = phases.reduce((a, p) => a + (weights[p.status] ?? 0), 0);
-  const pct = Math.round((score / phases.length) * 100);
-  if (state === "FAILED") return Math.min(pct, 95);
-  return Math.min(pct, 99);
+  const pct = Math.round((score / Math.max(phases.length, 1)) * 100);
+  if (execState === "FAILED") return Math.min(pct, 95);
+  // Cap below 100 while any step is still running or pending
+  return Math.min(pct, 95);
 }
 
 export function buildLiveFeed(kestraLines, jobLogs, apiTasks, execState, jobMeta) {

@@ -73,12 +73,13 @@ function formatElapsed(ms) {
 }
 
 function inferExecState(apiState, taskMap, lockedSuccess, pacedAllSuccess) {
+  // Never surface SUCCESS until paced UI finishes — backend can finish early.
   if (lockedSuccess || pacedAllSuccess) return "SUCCESS";
   if (apiState === "FAILED" || apiState === "KILLED") return apiState;
   if (taskMap["health-after"] === "FAILED" || taskMap["run-pipeline-job"] === "FAILED")
     return "FAILED";
   if (taskMap.__exec === "FAILED") return "FAILED";
-  return apiState || "RUNNING";
+  return "RUNNING";
 }
 
 function Confetti() {
@@ -94,7 +95,8 @@ function Confetti() {
 function ProgressRing({ pct, finished, success }) {
   const r = 54;
   const c = 2 * Math.PI * r;
-  const displayPct = success ? 100 : pct;
+  // Only show 100 when the paced pipeline is fully done — never while a step spins.
+  const displayPct = success ? 100 : Math.min(pct, 95);
   const offset = c - (displayPct / 100) * c;
   return (
     <div className="run-ring-wrap">
@@ -111,7 +113,7 @@ function ProgressRing({ pct, finished, success }) {
       </svg>
       <div className="run-ring-inner">
         <span className={`run-ring-pct ${success ? "ok" : ""}`}>{displayPct}%</span>
-        <span className="run-ring-label">complete</span>
+        <span className="run-ring-label">{success ? "complete" : "in progress"}</span>
       </div>
     </div>
   );
@@ -338,9 +340,9 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
     ]
   );
 
-  const finished = DONE_STATES.has(execState);
   const success = lockedSuccess || pacedAllSuccess;
   const failed = execState === "FAILED" || execState === "KILLED";
+  const finished = success || failed;
 
   useEffect(() => {
     if (pacedAllSuccess && !lockedSuccess) setLockedSuccess(true);
@@ -358,7 +360,8 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
   }, [success, executionId, tasks, phases]);
 
   const activePhase = success ? null : phases.find((p) => p.status === "running");
-  const pct = success ? 100 : progressPct(phases, execState);
+  // Percent follows paced phases only — never jump to 100 while Health is still spinning.
+  const pct = success ? 100 : progressPct(phases, failed ? "FAILED" : "RUNNING");
   const phaseElapsed = activePhase
     ? formatElapsed(Date.now() - startedAt - (CLIENT_PIPELINE.findIndex((p) => p.id === activePhase.id) * 28000))
     : null;
