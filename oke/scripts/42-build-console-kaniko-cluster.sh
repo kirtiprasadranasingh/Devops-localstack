@@ -7,11 +7,13 @@ TAG="${CONSOLE_TAG:-v24}"
 IMAGE="ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:${TAG}"
 BUILDER="ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v9"
 GIT_REPO="${GIT_REPO:-https://github.com/kirtiprasadranasingh/Devops-localstack.git}"
-GIT_BRANCH="${GIT_BRANCH:-github-clean}"
+# Use CONSOLE_GIT_BRANCH — not GIT_BRANCH (often set to main/master for pipeline runs)
+BRANCH="${CONSOLE_GIT_BRANCH:-github-clean}"
 JOB="enlight-console-build-${TAG//./-}"
 
 echo "=========================================="
 echo " Kaniko build console ${TAG} (OCIR only)"
+echo " Branch: ${BRANCH}"
 echo "=========================================="
 
 # Remove previous failed job if any
@@ -43,9 +45,9 @@ spec:
             - -c
             - |
               set -euo pipefail
-              echo "==> Clone ${GIT_BRANCH} from GitHub"
+              echo "==> Clone ${BRANCH} from GitHub"
               rm -rf /work
-              git clone --depth 1 -b ${GIT_BRANCH} ${GIT_REPO} /work
+              git clone --depth 1 -b ${BRANCH} ${GIT_REPO} /work
               BUILD_CTX=/work/console
               DOCKERFILE="\${BUILD_CTX}/Dockerfile.oke"
               test -f "\${DOCKERFILE}" || DOCKERFILE="\${BUILD_CTX}/Dockerfile"
