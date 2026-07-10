@@ -11,12 +11,14 @@ metadata:
   name: enlight-console-job-reader
   namespace: enlight-platform
 rules:
+  # read_namespaced_job + read_namespaced_job_status
   - apiGroups: ["batch"]
-    resources: ["jobs"]
-    verbs: ["get", "list"]
+    resources: ["jobs", "jobs/status"]
+    verbs: ["get", "list", "watch"]
+  # list pods + read_namespaced_pod_log
   - apiGroups: [""]
     resources: ["pods", "pods/log"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["get", "list", "delete"]

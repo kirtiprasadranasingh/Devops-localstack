@@ -3,7 +3,7 @@
 set -euo pipefail
 
 NS="${NS:-enlight-platform}"
-PREFERRED="${CONSOLE_IMAGE:-ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:v24}"
+PREFERRED="${CONSOLE_IMAGE:-ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:v25}"
 FALLBACK="${CONSOLE_FALLBACK:-ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:v20}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -34,10 +34,17 @@ if [[ "${ARCH}" == "x86_64" ]]; then
 fi
 
 echo ""
-echo "==> 2) RBAC + Recreate strategy"
-kubectl apply -f "${ROOT}/oke/manifests/32-console-rbac.yaml" 2>/dev/null || true
-kubectl patch serviceaccount enlight-console -n "${NS}" --type=merge \
-  -p '{"imagePullSecrets":[{"name":"ocir-pull-secret"}]}' 2>/dev/null || true
+echo "==> 2) RBAC + Recreate strategy (required for Live activity logs)"
+if [[ ! -f "${ROOT}/oke/manifests/32-console-rbac.yaml" ]]; then
+  echo "ERROR: ${ROOT}/oke/manifests/32-console-rbac.yaml missing"
+  exit 1
+fi
+kubectl apply -f "${ROOT}/oke/manifests/32-console-rbac.yaml"
+kubectl patch deployment enlight-console -n "${NS}" --type=merge -p \
+  '{"spec":{"template":{"spec":{"serviceAccountName":"enlight-console"}}}}' 2>/dev/null || \
+kubectl patch deployment enlight-console -n "${NS}" --type=json -p='[
+  {"op":"add","path":"/spec/template/spec/serviceAccountName","value":"enlight-console"}
+]' 2>/dev/null || true
 kubectl patch deployment enlight-console -n "${NS}" --type=json -p='[
   {"op":"replace","path":"/spec/strategy","value":{"type":"Recreate"}}
 ]' 2>/dev/null || true

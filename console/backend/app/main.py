@@ -139,7 +139,7 @@ async def health() -> dict[str, str]:
         "status": "ok",
         "service": settings.app_name,
         "mode": settings.mode,
-        "console_version": "v24",
+        "console_version": "v25",
     }
 
 

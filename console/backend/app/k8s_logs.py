@@ -34,6 +34,21 @@ def job_name_for_execution(execution_id: str) -> str:
     return f"enlight-pipeline-{execution_id.lower()}"
 
 
+def _job_phase(job) -> str:
+    conditions = job.status.conditions or []
+    if any(c.type == "Complete" and c.status == "True" for c in conditions):
+        return "complete"
+    if any(c.type == "Failed" and c.status == "True" for c in conditions):
+        return "failed"
+    if job.status.active:
+        return "running"
+    if job.status.succeeded:
+        return "complete"
+    if job.status.failed:
+        return "failed"
+    return "running"
+
+
 def _read_pod_logs(namespace: str, pod_name: str, tail: int) -> str:
     from kubernetes.client.rest import ApiException
 
@@ -50,6 +65,59 @@ def _read_pod_logs(namespace: str, pod_name: str, tail: int) -> str:
     return ""
 
 
+def _collect_pod_logs(namespace: str, job_name: str, tail: int) -> tuple[str, str | None, str]:
+    """Return (logs, error_hint, inferred_phase)."""
+    from kubernetes.client.rest import ApiException
+
+    try:
+        pods = _core_api.list_namespaced_pod(
+            namespace,
+            label_selector=f"job-name={job_name}",
+        )
+    except ApiException as exc:
+        return "", f"Cannot list pods for {job_name}: {exc.reason}", "pending"
+
+    if not pods.items:
+        return "", None, "pending"
+
+    ranked = sorted(
+        pods.items,
+        key=lambda p: (
+            0 if (p.status.phase or "") in ("Running", "Succeeded") else 1,
+            p.metadata.creation_timestamp or "",
+        ),
+    )
+
+    inferred = "pending"
+    for pod in ranked:
+        pod_phase = pod.status.phase or ""
+        if pod_phase == "Succeeded":
+            inferred = "complete"
+        elif pod_phase == "Running":
+            inferred = "running"
+        elif pod_phase == "Failed":
+            inferred = "failed"
+
+        pod_name = pod.metadata.name
+        try:
+            logs = _read_pod_logs(namespace, pod_name, tail)
+            if logs:
+                return logs, None, inferred
+        except ApiException as exc:
+            if exc.status == 404:
+                continue
+            return "", f"Logs not ready ({exc.reason})", inferred
+
+    return "", "Build pod started — logs not ready yet…", inferred
+
+
+def _job_container_image(job) -> str:
+    try:
+        return job.spec.template.spec.containers[0].image
+    except (AttributeError, IndexError):
+        return ""
+
+
 def get_job_logs(namespace: str, execution_id: str, tail: int = 200) -> dict:
     """Return job status + pod logs for a pipeline execution."""
     job_name = job_name_for_execution(execution_id)
@@ -64,74 +132,51 @@ def get_job_logs(namespace: str, execution_id: str, tail: int = 200) -> dict:
 
     from kubernetes.client.rest import ApiException
 
+    job = None
+    phase = "pending"
+    job_error: str | None = None
+
+    # Prefer read_namespaced_job (needs jobs/get, not jobs/status)
     try:
-        job = _batch_api.read_namespaced_job_status(job_name, namespace)
+        job = _batch_api.read_namespaced_job(job_name, namespace)
+        phase = _job_phase(job)
     except ApiException as exc:
         if exc.status == 404:
+            logs, hint, pod_phase = _collect_pod_logs(namespace, job_name, tail)
             return {
                 "ok": True,
                 "job": job_name,
-                "status": "pending",
-                "logs": "",
-                "hint": "Waiting for pipeline job to start…",
+                "status": pod_phase if logs else "pending",
+                "logs": logs,
+                "hint": hint,
             }
+        if exc.status == 403:
+            job_error = (
+                f"RBAC denied reading job {job_name} — apply oke/manifests/32-console-rbac.yaml "
+                "and restart enlight-console"
+            )
+        else:
+            job_error = f"Cannot read job {job_name}: {exc.reason}"
+
+    logs, hint, pod_phase = _collect_pod_logs(namespace, job_name, tail)
+    if phase == "pending" and pod_phase != "pending":
+        phase = pod_phase
+
+    if job_error and not logs:
         return {
             "ok": False,
             "job": job_name,
             "status": "error",
             "logs": "",
-            "error": f"Cannot read job {job_name}: {exc.reason}",
+            "error": job_error,
+            "hint": hint,
         }
-
-    conditions = job.status.conditions or []
-    complete = any(c.type == "Complete" and c.status == "True" for c in conditions)
-    failed = any(c.type == "Failed" and c.status == "True" for c in conditions)
-    if complete:
-        phase = "complete"
-    elif failed:
-        phase = "failed"
-    else:
-        phase = "running"
-
-    logs = ""
-    log_error = None
-    try:
-        pods = _core_api.list_namespaced_pod(
-            namespace,
-            label_selector=f"job-name={job_name}",
-        )
-        # Prefer Running/Succeeded pods; newest last in list often = latest attempt
-        ranked = sorted(
-            pods.items,
-            key=lambda p: (
-                0 if (p.status.phase or "") in ("Running", "Succeeded") else 1,
-                p.metadata.creation_timestamp or "",
-            ),
-        )
-        for pod in ranked:
-            pod_name = pod.metadata.name
-            try:
-                logs = _read_pod_logs(namespace, pod_name, tail)
-                if logs:
-                    break
-            except ApiException as exc:
-                log_error = f"Logs not ready ({exc.reason})"
-                continue
-    except ApiException as exc:
-        log_error = f"Cannot list pods: {exc.reason}"
 
     return {
         "ok": True,
         "job": job_name,
         "status": phase,
         "logs": logs,
-        "hint": log_error if not logs else None,
-        "image": _job_container_image(job),
+        "hint": hint or job_error,
+        "image": _job_container_image(job) if job else "",
     }
-
-
-def _job_container_image(job) -> str:
-    try:
-        return job.spec.template.spec.containers[0].image
-    except (AttributeError, IndexError):
-        return ""
