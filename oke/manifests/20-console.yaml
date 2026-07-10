@@ -1,134 +1,91 @@
 apiVersion: apps/v1
-
 kind: Deployment
-
 metadata:
-
   name: enlight-console
-
   namespace: enlight-platform
-
   labels:
-
     app: enlight-console
-
 spec:
-
   replicas: 1
-
+  # Recreate avoids "old replica pending termination" deadlock on single-replica deploys
+  strategy:
+    type: Recreate
+  progressDeadlineSeconds: 600
+  revisionHistoryLimit: 2
   selector:
-
     matchLabels:
-
       app: enlight-console
-
   template:
-
     metadata:
-
       labels:
-
         app: enlight-console
-
     spec:
-
+      serviceAccountName: enlight-console
+      terminationGracePeriodSeconds: 15
+      imagePullSecrets:
+        - name: ocir-pull-secret
       containers:
-
         - name: console
-
           image: PLACEHOLDER_OCIR_CONSOLE
-
           imagePullPolicy: Always
-
           ports:
-
             - containerPort: 3100
-
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3100
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3100
+            initialDelaySeconds: 20
+            periodSeconds: 30
           env:
-
             - name: MODE
-
               value: oke
-
             - name: PUBLIC_BASE_URL
-
               value: PLACEHOLDER_PUBLIC_BASE_URL
-
             - name: KESTRA_PUBLIC_URL
-
               value: PLACEHOLDER_KESTRA_PUBLIC_URL
-
             - name: KESTRA_URL
-
               value: http://kestra.enlight-platform.svc.cluster.local:8080
-
             - name: KESTRA_NAMESPACE
-
               value: main
-
             - name: KESTRA_FLOW_ID
-
               value: oke-dagger-gitops-pipeline
-
             - name: KESTRA_USERNAME
-
               value: admin@enlightlab.com
-
             - name: KESTRA_PASSWORD
-
               value: Admin1234
-
             - name: GITOPS_PUBLIC_URL
-
               value: https://argocd.enlightlab.com
-
             - name: APP_HEALTH_URL
-
               value: http://fastapi-minimal.enlight-platform.svc.cluster.local:8000/health
-
             - name: REGISTRY_URL
-
               value: https://ap-mumbai-1.ocir.io
-
+            - name: PIPELINE_IMAGE
+              value: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v9
           resources:
-
             requests:
-
               cpu: 50m
-
               memory: 128Mi
-
             limits:
-
               cpu: 300m
-
               memory: 512Mi
-
 ---
-
 apiVersion: v1
-
 kind: Service
-
 metadata:
-
   name: enlight-console
-
   namespace: enlight-platform
-
 spec:
-
   type: ClusterIP
-
   selector:
-
     app: enlight-console
-
   ports:
-
     - name: http
-
       port: 3100
-
       targetPort: 3100
-
