@@ -95,22 +95,19 @@ async def get_execution_logs(
     namespace: str,
     execution_id: str,
 ) -> list[dict[str, Any]]:
-    """Fetch execution log lines from Kestra."""
+    """Fetch execution log lines from Kestra (client-friendly, no raw JSON blobs)."""
     base = base_url.rstrip("/")
     lines: list[dict[str, Any]] = []
 
     execution = await get_execution(client, base_url, namespace, execution_id)
     if execution:
-        for tr in execution.get("taskRunList") or []:
-            for log in tr.get("outputs") or {}:
-                pass
         state = (execution.get("state") or {}).get("current")
         lines.append({"level": "INFO", "message": f"Execution state: {state}"})
         for tr in execution.get("taskRunList") or []:
             tid = tr.get("taskId", "?")
             tstate = (tr.get("state") or {}).get("current", "?")
             dur = tr.get("duration", "")
-            lines.append({"level": "INFO", "message": f"Task {tid}: {tstate} {dur}"})
+            lines.append({"level": "INFO", "message": f"Task {tid}: {tstate} {dur}".strip()})
 
     for path in (
         f"/api/v1/main/executions/{namespace}/{execution_id}/logs/download",
@@ -118,14 +115,46 @@ async def get_execution_logs(
     ):
         try:
             response = await client.get(f"{base}{path}")
-            if response.status_code == 200 and response.text.strip():
-                for raw in response.text.splitlines()[-40:]:
-                    lines.append({"level": "INFO", "message": raw})
-                break
+            if response.status_code != 200 or not response.text.strip():
+                continue
+            for raw in response.text.splitlines()[-50:]:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                human = _humanize_kestra_log_line(raw)
+                if human:
+                    lines.append({"level": "INFO", "message": human})
+            break
         except Exception:  # noqa: BLE001
             continue
 
     return lines
+
+
+def _humanize_kestra_log_line(raw: str) -> str | None:
+    """Convert Kestra JSON log line to short client text."""
+    if raw.startswith("{"):
+        try:
+            import json
+
+            j = json.loads(raw)
+            msg = j.get("message") or ""
+            tid = j.get("taskId") or ""
+            if "Deploy complete" in msg:
+                return "Deployment complete"
+            if "response code '200'" in msg or 'response code "200"' in msg:
+                return "Health check passed"
+            if j.get("level") == "ERROR" and msg:
+                short = msg.split("\n")[0][:140]
+                return f"Error ({tid}): {short}" if tid else f"Error: {short}"
+            if msg and len(msg) < 120 and not msg.startswith("{"):
+                return msg
+            return None
+        except Exception:  # noqa: BLE001
+            return None
+    if len(raw) > 200:
+        return None
+    return raw
 
 
 async def get_execution(

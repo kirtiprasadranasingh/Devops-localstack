@@ -2,61 +2,74 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v21";
+export const CONSOLE_VERSION = "v22";
 
 export const HOME_STEPS = [
   {
     step: "1",
     title: "Trigger the pipeline",
-    body: "One click starts Kestra — orchestration, build, deploy, and verify.",
+    body: "One click starts orchestration — build, deploy, and verify.",
   },
   {
     step: "2",
     title: "Watch it live",
-    body: "Animated progress and build logs show exactly what is happening.",
+    body: "Animated horizontal progress and logs update in real time.",
   },
   {
     step: "3",
     title: "GitOps deploys automatically",
-    body: "The new image is committed to GitHub and synced to Kubernetes.",
+    body: "The manifest is committed to GitHub and synced to Kubernetes.",
   },
   {
     step: "4",
     title: "Client sees the result",
-    body: "The demo app updates with a visual page proving the deployment worked.",
+    body: "The demo app updates with a page proving the deployment worked.",
   },
 ];
+
+/** Services shown on home — no registry / monitoring clutter */
+export const HOME_STATUS_KEYS = ["console", "application", "kestra", "gitops"];
 
 export const CLIENT_PIPELINE = [
   {
     id: "trigger",
-    kestraTasks: [],
-    label: "Pipeline started",
-    clientLine: "Kestra received your deploy request and scheduled the build job.",
+    label: "Start",
+    short: "Started",
+    clientLine: "Deploy request received",
     icon: "1",
   },
   {
     id: "build",
     kestraTasks: ["run-pipeline-job"],
-    label: "Build & push image",
-    clientLine: "Kaniko clones code, commits GitOps, builds the container, and pushes to the registry.",
+    label: "Build",
+    short: "Build",
+    clientLine: "Kaniko builds the app image",
     icon: "2",
   },
   {
     id: "deploy",
     kestraTasks: ["wait-pipeline"],
-    label: "Deploy via GitOps",
-    clientLine: "ArgoCD syncs the Git commit and rolls out the new version on Kubernetes.",
+    label: "Deploy",
+    short: "GitOps",
+    clientLine: "ArgoCD rolls out the new version",
     icon: "3",
   },
   {
     id: "verify",
     kestraTasks: ["health-after", "done"],
-    label: "Health verified",
-    clientLine: "The pipeline confirms the live app responds successfully.",
+    label: "Verify",
+    short: "Health",
+    clientLine: "Live app health check passes",
     icon: "4",
   },
 ];
+
+const TASK_LABELS = {
+  "run-pipeline-job": "Build job",
+  "wait-pipeline": "GitOps sync",
+  "health-after": "Health check",
+  done: "Complete",
+};
 
 export function parseLogMilestones(logs) {
   const text = logs || "";
@@ -79,52 +92,167 @@ export function filterClientLogs(logs) {
     /\[main /,
     /deploy:/,
     /Kaniko build/,
-    /Pushed ap-mumbai|pushed blob|Pushing/,
     /^DONE /,
-    /ERROR|error|Failed/i,
+    /ERROR|Failed/i,
     /git: not found/,
-    /INFO\[/,
-    /Executing/,
   ];
   return logs
     .split("\n")
     .map((l) => l.trimEnd())
     .filter((line) => line && keep.some((re) => re.test(line)))
-    .slice(-40);
+    .slice(-30);
 }
 
-const TASK_LABELS = {
-  "run-pipeline-job": "Build job",
-  "wait-pipeline": "GitOps sync wait",
-  "health-after": "Health check",
-  done: "Complete",
-};
+/** Turn Kestra log line (JSON or text) into a client-friendly string — never raw JSON. */
+export function humanizeKestraLine(raw) {
+  const msg = typeof raw === "string" ? raw : raw?.message;
+  if (!msg || typeof msg !== "string") return null;
 
-export function buildLiveFeed(kestraLines, jobLogs, tasks) {
+  const trimmed = msg.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith("Task ")) return trimmed.replace(/\s+/g, " ");
+
+  if (trimmed.startsWith("Execution state:")) return trimmed;
+
+  if (trimmed.startsWith("{")) {
+    try {
+      const j = JSON.parse(trimmed);
+      const tid = j.taskId || j.task?.id;
+      const level = (j.level || "").toUpperCase();
+
+      if (j.message && typeof j.message === "string") {
+        const m = j.message;
+        if (m.includes("Deploy complete")) return "✓ Deployment complete";
+        if (m.includes("response code '200'") || m.includes('response code "200"'))
+          return "✓ Health check passed";
+        if (m.includes("UnknownHostException") || m.includes("Name or service not known"))
+          return "✗ App not reachable yet (normal right after reset)";
+        if (level === "ERROR") return `✗ ${tid || "Task"}: ${m.slice(0, 120)}`;
+        if (m.length < 160 && !m.startsWith("{")) return m;
+      }
+
+      if (tid && j.state) return `${TASK_LABELS[tid] || tid}: ${j.state}`;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  if (trimmed.length > 180) return null;
+  return trimmed;
+}
+
+export function mergeTaskStates(apiTasks, kestraLines, milestones) {
+  const tm = {};
+  for (const t of apiTasks || []) {
+    if (t.id && t.state) tm[t.id] = t.state;
+  }
+
+  for (const line of kestraLines || []) {
+    const msg = typeof line === "string" ? line : line?.message;
+    if (!msg) continue;
+
+    const taskMatch = msg.match(/^Task ([^:]+):\s*(\S+)/);
+    if (taskMatch) tm[taskMatch[1]] = taskMatch[2];
+
+    if (msg.includes("Execution state: SUCCESS")) return { ...tm, __exec: "SUCCESS" };
+    if (msg.includes("Execution state: FAILED")) return { ...tm, __exec: "FAILED" };
+
+    try {
+      if (msg.trim().startsWith("{")) {
+        const j = JSON.parse(msg);
+        const tid = j.taskId;
+        if (tid && j.state) tm[tid] = j.state;
+        if (j.message?.includes("Deploy complete")) tm.done = "SUCCESS";
+        if (j.message?.includes("response code '200'")) tm["health-after"] = "SUCCESS";
+        if (j.level === "ERROR" && tid) tm[tid] = "FAILED";
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (milestones.done) tm["run-pipeline-job"] = tm["run-pipeline-job"] || "SUCCESS";
+
+  return tm;
+}
+
+export function resolvePhases(taskMap, execState, milestones) {
+  const tm = taskMap;
+  const job = tm["run-pipeline-job"];
+  const wait = tm["wait-pipeline"];
+  const health = tm["health-after"];
+  const done = tm.done;
+  const inferredExec = tm.__exec || execState;
+
+  const s = {};
+  s.trigger = "success";
+
+  if (job === "FAILED") s.build = "failed";
+  else if (job === "SUCCESS" || milestones.done) s.build = "success";
+  else if (job === "RUNNING" || milestones.kanikoStarted || milestones.cloned) s.build = "running";
+  else if (!job && inferredExec === "RUNNING") s.build = "running";
+  else s.build = "pending";
+
+  if (wait === "FAILED") s.deploy = "failed";
+  else if (wait === "SUCCESS") s.deploy = "success";
+  else if (s.build === "success" || milestones.done) s.deploy = "running";
+  else s.deploy = "pending";
+
+  if (health === "FAILED" || done === "FAILED") s.verify = "failed";
+  else if (inferredExec === "SUCCESS" || (health === "SUCCESS" && done === "SUCCESS"))
+    s.verify = "success";
+  else if (wait === "SUCCESS" || health === "RUNNING") s.verify = "running";
+  else s.verify = "pending";
+
+  if (inferredExec === "FAILED") {
+    if (tm["health-before"] === "FAILED") s.build = "failed";
+    else if (job === "FAILED") s.build = "failed";
+    else if (wait === "FAILED") s.deploy = "failed";
+    else if (health === "FAILED") s.verify = "failed";
+    else if (s.verify === "running") s.verify = "failed";
+  }
+
+  return CLIENT_PIPELINE.map((step) => ({
+    ...step,
+    status: s[step.id] || "pending",
+  }));
+}
+
+export function progressPct(phases, execState) {
+  const state = execState === "RUNNING" ? null : execState;
+  if (state === "SUCCESS") return 100;
+  const weights = { success: 1, running: 0.6, pending: 0, failed: 0 };
+  const score = phases.reduce((a, p) => a + (weights[p.status] ?? 0), 0);
+  const pct = Math.round((score / phases.length) * 100);
+  if (state === "FAILED") return Math.min(pct, 95);
+  return Math.min(pct, 99);
+}
+
+export function buildLiveFeed(kestraLines, jobLogs, apiTasks) {
   const seen = new Set();
   const out = [];
 
   function add(text, kind = "info") {
-    const key = `${kind}:${text}`;
-    if (!text || seen.has(key)) return;
-    seen.add(key);
+    if (!text || seen.has(text)) return;
+    seen.add(text);
     out.push({ text, kind });
   }
 
-  for (const line of kestraLines || []) {
-    const msg = typeof line === "string" ? line : line.message;
-    if (msg) add(msg, "kestra");
+  for (const t of apiTasks || []) {
+    const name = TASK_LABELS[t.id] || t.id;
+    if (t.state) add(`${name}: ${t.state}`, "task");
   }
 
-  for (const t of tasks || []) {
-    const name = TASK_LABELS[t.id] || t.id;
-    const st = t.state || "?";
-    add(`${name}: ${st}${t.duration ? ` (${t.duration})` : ""}`, "task");
+  for (const line of kestraLines || []) {
+    const human = humanizeKestraLine(line);
+    if (human) add(human, "kestra");
   }
 
   for (const line of filterClientLogs(jobLogs)) {
     add(line, "build");
   }
 
-  return out.slice(-45);
+  return out.slice(-35);
 }

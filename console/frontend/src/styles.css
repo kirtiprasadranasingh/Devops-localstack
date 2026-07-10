@@ -839,6 +839,162 @@ code {
   color: var(--el-purple);
 }
 
+.run-hero-compact {
+  padding: 1.5rem 1.5rem 0.5rem;
+}
+
+.run-hero-compact h1 {
+  font-size: clamp(1.35rem, 3.5vw, 1.75rem);
+  margin: 0 0 0.75rem;
+}
+
+/* Horizontal pipeline track */
+.run-h-pipeline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+  max-width: 920px;
+  margin: 1.5rem auto 2rem;
+  padding: 0 1rem;
+}
+
+.run-h-step-wrap {
+  display: flex;
+  align-items: flex-start;
+  flex: 1;
+  min-width: 0;
+}
+
+.run-h-step {
+  flex: 1;
+  text-align: center;
+  padding: 0 0.35rem;
+  opacity: 0.45;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.run-h-step.running,
+.run-h-step.success,
+.run-h-step.active {
+  opacity: 1;
+}
+
+.run-h-step.active {
+  transform: translateY(-2px);
+}
+
+.run-h-node {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 0.5rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  border: 2px solid var(--el-border);
+  background: var(--el-surface);
+  color: var(--el-muted);
+  transition: all 0.4s ease;
+}
+
+.run-h-step.running .run-h-node,
+.run-h-step.active .run-h-node {
+  border-color: var(--el-purple);
+  background: var(--el-purple-light);
+  color: var(--el-purple);
+  box-shadow: 0 0 0 4px rgba(88, 80, 236, 0.12);
+}
+
+.run-h-step.success .run-h-node {
+  border-color: #059669;
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.run-h-step.failed .run-h-node {
+  border-color: #dc2626;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.run-h-check,
+.run-h-fail {
+  font-size: 1.1rem;
+}
+
+.run-h-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--el-purple-muted);
+  border-top-color: var(--el-purple);
+  border-radius: 50%;
+  animation: run-spin 0.8s linear infinite;
+}
+
+@keyframes run-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.run-h-step h3 {
+  margin: 0 0 0.2rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.run-h-step p {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--el-muted);
+  line-height: 1.35;
+}
+
+.run-h-connector {
+  flex: 0 0 28px;
+  height: 3px;
+  margin-top: 24px;
+  background: var(--el-border);
+  border-radius: 2px;
+  transition: background 0.5s ease;
+}
+
+.run-h-connector.done {
+  background: linear-gradient(90deg, #059669, var(--el-purple));
+}
+
+.run-h-connector.active {
+  background: linear-gradient(90deg, var(--el-purple), var(--el-border));
+  animation: connector-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes connector-pulse {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .run-h-pipeline {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .run-h-step-wrap {
+    flex: 1 1 45%;
+  }
+
+  .run-h-connector {
+    display: none;
+  }
+}
+
 .run-timeline {
   max-width: 640px;
   margin: 2rem auto;

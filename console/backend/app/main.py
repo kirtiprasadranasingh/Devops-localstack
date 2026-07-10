@@ -139,7 +139,7 @@ async def health() -> dict[str, str]:
         "status": "ok",
         "service": settings.app_name,
         "mode": settings.mode,
-        "console_version": "v21",
+        "console_version": "v22",
     }
 
 
@@ -401,20 +401,26 @@ async def execution_status(execution_id: str) -> dict[str, Any]:
             if not data:
                 raise HTTPException(status_code=404, detail="Execution not found")
             state = data.get("state", {})
+            current = state.get("current")
+            tasks = [
+                {
+                    "id": tr.get("taskId"),
+                    "state": (tr.get("state") or {}).get("current"),
+                    "duration": tr.get("duration"),
+                }
+                for tr in (data.get("taskRunList") or [])
+                if tr.get("taskId")
+            ]
+            if not current or current == "RUNNING":
+                if tasks and all(t.get("state") == "SUCCESS" for t in tasks):
+                    current = "SUCCESS"
             return {
                 "execution_id": execution_id,
                 "flow_id": data.get("flowId"),
-                "state": state.get("current"),
+                "state": current,
                 "url": settings.kestra_execution_url(execution_id, data.get("flowId")),
                 "error": _execution_error(data),
-                "tasks": [
-                    {
-                        "id": tr.get("taskId"),
-                        "state": (tr.get("state") or {}).get("current"),
-                        "duration": tr.get("duration"),
-                    }
-                    for tr in (data.get("taskRunList") or [])
-                ],
+                "tasks": tasks,
             }
     except HTTPException:
         raise

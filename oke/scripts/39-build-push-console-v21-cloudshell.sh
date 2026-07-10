@@ -4,7 +4,7 @@
 set -euo pipefail
 
 NS="${NS:-enlight-platform}"
-IMAGE="ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:v21"
+IMAGE="ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:v22"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 echo "=========================================="

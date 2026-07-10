@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import EnlightLogo from "./Logo";
-import { CONSOLE_VERSION, HOME_STEPS } from "./branding";
+import { CONSOLE_VERSION, HOME_STATUS_KEYS, HOME_STEPS } from "./branding";
 
 function ExternalLink({ href, children, className = "" }) {
   if (!href?.startsWith("http")) {
@@ -46,8 +46,7 @@ export default function Home({ onRunDemo }) {
   const handleReset = async () => {
     if (
       !window.confirm(
-        "Reset the demo app?\n\nThis removes fastapi-minimal from ArgoCD and the cluster. " +
-          "The app will be unreachable until you run the pipeline again (Kaniko build → registry → GitOps deploy)."
+        "Reset the demo app?\n\nThis removes the app from ArgoCD and the cluster until you run the pipeline again."
       )
     ) {
       return;
@@ -88,12 +87,9 @@ export default function Home({ onRunDemo }) {
             Ship code to production with <span className="el-accent-text">one click</span>
           </h1>
           <p className="el-lead">
-            Show your client a live deployment — build, GitOps commit, cluster rollout, and health
-            check — all orchestrated automatically and visible in real time.
+            One click runs the full pipeline — build, GitOps, deploy, and health check — with a
+            live animated view for your client.
           </p>
-          <button type="button" className="el-btn el-btn-primary el-btn-hero" onClick={onRunDemo}>
-            Run client demo →
-          </button>
 
           <div className="el-stat-row">
             {[
@@ -132,13 +128,8 @@ export default function Home({ onRunDemo }) {
           <div className="el-demo-reset-card">
             <div className="el-demo-reset-copy">
               <p>
-                The pipeline builds <strong>fastapi-minimal</strong> with{" "}
-                <strong>Kaniko</strong>, pushes the image to the registry, updates GitOps on
-                GitHub, and ArgoCD deploys it to the cluster.
-              </p>
-              <p className="el-demo-reset-hint">
-                Use reset before a demo so the app is gone — then run the pipeline and watch it
-                come back live.
+                Remove the demo app from the cluster before a client presentation. Run the pipeline
+                again to build and redeploy automatically.
               </p>
               <span
                 className={`el-demo-badge ${demoLive ? "live" : alreadyReset ? "stopped" : "checking"}`}
@@ -172,20 +163,24 @@ export default function Home({ onRunDemo }) {
           {error && <p className="el-error">{error}</p>}
           {status && (
             <div className="el-status-grid">
-              {Object.entries(status.services).map(([name, svc]) => (
-                <div key={name} className="el-status-card">
-                  <span className={`el-status-dot ${svc.ok ? "ok" : "down"}`} />
-                  <div>
-                    <strong>{name}</strong>
-                    <span>{svc.ok ? `${svc.latency_ms}ms` : "down"}</span>
+              {HOME_STATUS_KEYS.filter((name) => status.services[name]).map((name) => {
+                const svc = status.services[name];
+                const label = status.service_labels?.[name] || name;
+                return (
+                  <div key={name} className="el-status-card">
+                    <span className={`el-status-dot ${svc.ok ? "ok" : "down"}`} />
+                    <div>
+                      <strong>{label}</strong>
+                      <span>{svc.ok ? `${svc.latency_ms}ms` : "down"}</span>
+                    </div>
+                    {links[name]?.startsWith("http") && (
+                      <ExternalLink href={links[name]} className="el-link-sm">
+                        Open →
+                      </ExternalLink>
+                    )}
                   </div>
-                  {links[name]?.startsWith("http") && (
-                    <ExternalLink href={links[name]} className="el-link-sm">
-                      Open →
-                    </ExternalLink>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
