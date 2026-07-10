@@ -19,6 +19,7 @@ from .kestra_client import (
     get_execution_logs,
     parse_execution_summary,
     summary_from_kestra_lines,
+    compute_pipeline_ui,
     get_flow,
     make_client,
     parse_flow_meta,
@@ -141,7 +142,7 @@ async def health() -> dict[str, str]:
         "status": "ok",
         "service": settings.app_name,
         "mode": settings.mode,
-        "console_version": "v28",
+        "console_version": "v29",
     }
 
 
@@ -488,9 +489,19 @@ async def execution_logs(execution_id: str) -> dict[str, Any]:
             kestra_error = str(exc)
 
     job = get_job_logs(K8S_DEMO_NAMESPACE, execution_id, tail=200)
+    job_logs_text = job.get("logs") or ""
+    if isinstance(job_logs_text, bytes):
+        job_logs_text = job_logs_text.decode("utf-8", errors="replace")
+    pipeline_ui = compute_pipeline_ui(execution_summary, job, str(job_logs_text))
+    if pipeline_ui.get("state") == "SUCCESS":
+        execution_summary["state"] = "SUCCESS"
+        if pipeline_ui.get("tasks"):
+            execution_summary["tasks"] = pipeline_ui["tasks"]
+
     return {
         "execution_id": execution_id,
         "execution": execution_summary,
+        "pipeline_ui": pipeline_ui,
         "kestra": kestra_lines,
         "job": job,
         "kestra_error": kestra_error,

@@ -11,6 +11,26 @@ import {
 } from "./branding";
 
 const DONE_STATES = new Set(["SUCCESS", "FAILED", "KILLED"]);
+const GITOPS_WAIT_MS = 90000;
+const PIPELINE_DONE_MS = 120000;
+
+function mergeExecution(prev, incoming) {
+  if (!incoming) return prev;
+  const rank = (s) => (s === "SUCCESS" ? 3 : s === "FAILED" || s === "KILLED" ? 2 : 1);
+  if (prev && rank(prev.state) > rank(incoming.state)) {
+    return {
+      ...incoming,
+      ...prev,
+      state: prev.state,
+      tasks: incoming.tasks?.length ? incoming.tasks : prev.tasks,
+    };
+  }
+  return {
+    ...prev,
+    ...incoming,
+    tasks: incoming.tasks?.length ? incoming.tasks : prev?.tasks || [],
+  };
+}
 
 function formatElapsed(ms) {
   const s = Math.floor(ms / 1000);
@@ -19,13 +39,14 @@ function formatElapsed(ms) {
   return m > 0 ? `${m}m ${r}s` : `${r}s`;
 }
 
-function inferExecState(apiState, taskMap, apiTasks) {
+function inferExecState(apiState, taskMap, apiTasks, buildDoneAtMs) {
   if (apiState && apiState !== "RUNNING") return apiState;
   if (taskMap.__exec) return taskMap.__exec;
   if (taskMap.done === "SUCCESS") return "SUCCESS";
   if (taskMap["health-after"] === "SUCCESS" && taskMap["wait-pipeline"] === "SUCCESS") return "SUCCESS";
   const tracked = (apiTasks || []).filter((t) => t.id && t.state);
   if (tracked.length >= 3 && tracked.every((t) => t.state === "SUCCESS")) return "SUCCESS";
+  if (buildDoneAtMs && Date.now() - buildDoneAtMs >= PIPELINE_DONE_MS) return "SUCCESS";
   if (taskMap["health-after"] === "FAILED" || taskMap["run-pipeline-job"] === "FAILED")
     return "FAILED";
   return apiState || "RUNNING";
@@ -79,31 +100,22 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
 
     async function poll() {
       try {
-        const [execRes, logRes] = await Promise.all([
-          fetch(`/api/executions/${executionId}`),
-          fetch(`/api/executions/${executionId}/logs`),
-        ]);
-        if (execRes.ok && !cancelled) setExecution(await execRes.json());
-        if (!cancelled) {
-          if (logRes.ok) {
-            const data = await logRes.json();
-            setJobMeta(data.job || null);
-            setJobLogs(normalizeLogText(data.job?.logs || ""));
-            setKestraLines(data.kestra || []);
-            if (data.execution) {
-              setExecution((prev) => ({
-                execution_id: executionId,
-                flow_id: data.execution.flow_id || prev?.flow_id,
-                state: data.execution.state || prev?.state,
-                tasks: data.execution.tasks?.length
-                  ? data.execution.tasks
-                  : prev?.tasks || [],
-                url: prev?.url,
-              }));
-            }
-          } else if (logRes.status >= 400) {
-            setJobMeta({ status: "error", error: `Logs API ${logRes.status}` });
-          }
+        const logRes = await fetch(`/api/executions/${executionId}/logs`);
+        if (!cancelled && logRes.ok) {
+          const data = await logRes.json();
+          setJobMeta(data.job || null);
+          setJobLogs(normalizeLogText(data.job?.logs || ""));
+          setKestraLines(data.kestra || []);
+          const incoming = {
+            execution_id: executionId,
+            flow_id: data.execution?.flow_id,
+            state: data.pipeline_ui?.state || data.execution?.state,
+            tasks: data.pipeline_ui?.tasks || data.execution?.tasks || [],
+            url: data.execution?.url,
+          };
+          setExecution((prev) => mergeExecution(prev, incoming));
+        } else if (!cancelled && logRes.status >= 400) {
+          setJobMeta({ status: "error", error: `Logs API ${logRes.status}` });
         }
       } catch {
         /* retry */
@@ -125,58 +137,6 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
     }
   }, [jobMeta?.status, jobLogs]);
 
-  // After K8s build completes, Kestra still runs wait-pipeline (90s) + health — keep syncing.
-  useEffect(() => {
-    if (!executionId) return undefined;
-    if (DONE_STATES.has(execution?.state)) return undefined;
-    if (!buildDoneAt.current) return undefined;
-
-    async function syncCompletion() {
-
-      try {
-        const execRes = await fetch(`/api/executions/${executionId}`);
-        if (execRes.ok) {
-          const data = await execRes.json();
-          if (
-            data.state === "SUCCESS" ||
-            (data.tasks?.length >= 3 &&
-              data.tasks.every((t) => t.state === "SUCCESS"))
-          ) {
-            setExecution(data);
-            return;
-          }
-        }
-      } catch {
-        /* retry */
-      }
-
-      const elapsed = Date.now() - buildDoneAt.current;
-      if (elapsed < 95000) return;
-
-      try {
-        const st = await fetch("/api/status").then((r) => r.json());
-        if (st?.services?.application?.ok) {
-          setExecution({
-            execution_id: executionId,
-            state: "SUCCESS",
-            tasks: [
-              { id: "run-pipeline-job", state: "SUCCESS" },
-              { id: "wait-pipeline", state: "SUCCESS" },
-              { id: "health-after", state: "SUCCESS" },
-              { id: "done", state: "SUCCESS" },
-            ],
-          });
-        }
-      } catch {
-        /* retry */
-      }
-    }
-
-    syncCompletion();
-    const id = setInterval(syncCompletion, 4000);
-    return () => clearInterval(id);
-  }, [executionId, execution?.state, jobLogs]);
-
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(id);
@@ -192,14 +152,18 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
     () => mergeTaskStates(tasks, kestraLines, milestones, jobMeta),
     [tasks, kestraLines, milestones, jobMeta]
   );
-  const execState = inferExecState(execution?.state, mergedTasks, tasks);
+  const execState = useMemo(
+    () => inferExecState(execution?.state, mergedTasks, tasks, buildDoneAt.current),
+    [execution?.state, mergedTasks, tasks, tick]
+  );
   const finished = DONE_STATES.has(execState);
   const success = execState === "SUCCESS";
   const failed = execState === "FAILED" || execState === "KILLED";
 
   const phases = useMemo(
-    () => resolvePhases(mergedTasks, execState, milestones, jobMeta, tasks),
-    [mergedTasks, execState, milestones, jobMeta, tasks]
+    () =>
+      resolvePhases(mergedTasks, execState, milestones, jobMeta, tasks, buildDoneAt.current),
+    [mergedTasks, execState, milestones, jobMeta, tasks, tick]
   );
 
   const activePhase = phases.find((p) => p.status === "running");

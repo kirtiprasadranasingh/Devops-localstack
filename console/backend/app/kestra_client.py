@@ -279,6 +279,32 @@ def summary_from_kestra_lines(lines: list[dict[str, Any]]) -> dict[str, Any]:
     return {"state": state, "tasks": tasks, "flow_id": None}
 
 
+def compute_pipeline_ui(execution_summary: dict[str, Any], job: dict[str, Any], logs: str) -> dict[str, Any]:
+    """Server-side phase state — Kestra tasks when available, else K8s build job status."""
+    import re
+
+    tasks = execution_summary.get("tasks") or []
+    task_map = {t["id"]: t["state"] for t in tasks if t.get("id")}
+    ex_state = execution_summary.get("state")
+    build_done = job.get("status") == "complete" and bool(
+        re.search(r"DONE ap-mumbai", logs or "")
+    )
+
+    if ex_state == "SUCCESS" or task_map.get("done") == "SUCCESS":
+        return {"state": "SUCCESS", "pct": 100, "tasks": tasks}
+
+    if task_map.get("health-after") == "SUCCESS":
+        return {"state": "RUNNING", "pct": 92, "tasks": tasks}
+
+    if task_map.get("wait-pipeline") == "SUCCESS":
+        return {"state": "RUNNING", "pct": 78, "tasks": tasks}
+
+    if build_done or task_map.get("run-pipeline-job") == "SUCCESS":
+        return {"state": "RUNNING", "pct": 65, "tasks": tasks}
+
+    return {"state": ex_state or "RUNNING", "pct": 40, "tasks": tasks}
+
+
 async def trigger_execution(
     client: httpx.AsyncClient,
     base_url: str,

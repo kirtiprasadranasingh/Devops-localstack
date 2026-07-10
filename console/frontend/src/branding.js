@@ -2,7 +2,7 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v28";
+export const CONSOLE_VERSION = "v29";
 
 export const HOME_STEPS = [
   {
@@ -70,6 +70,10 @@ const TASK_LABELS = {
   "health-after": "Health check",
   done: "Complete",
 };
+
+/** Matches Kestra wait-pipeline PT90S + health-after in oke-dagger-gitops-pipeline */
+const GITOPS_WAIT_MS = 90000;
+const PIPELINE_DONE_MS = 120000;
 
 /** Decode API log text — handles legacy bytes repr strings from older console builds. */
 export function normalizeLogText(logs) {
@@ -232,7 +236,7 @@ export function mergeTaskStates(apiTasks, kestraLines, milestones, jobMeta) {
   return tm;
 }
 
-export function resolvePhases(taskMap, execState, milestones, jobMeta, apiTasks) {
+export function resolvePhases(taskMap, execState, milestones, jobMeta, apiTasks, buildDoneAtMs) {
   const tm = taskMap;
   const job = tm["run-pipeline-job"];
   const wait = tm["wait-pipeline"];
@@ -247,6 +251,25 @@ export function resolvePhases(taskMap, execState, milestones, jobMeta, apiTasks)
 
   if (allTasksSuccess || inferredExec === "SUCCESS" || done === "SUCCESS") {
     return CLIENT_PIPELINE.map((step) => ({ ...step, status: "success" }));
+  }
+
+  // K8s build finished — Kestra runs wait-pipeline (90s) then health (matches flow YAML)
+  if (buildDoneAtMs && milestones.done && jobPhase === "complete") {
+    const elapsed = Date.now() - buildDoneAtMs;
+    if (elapsed >= PIPELINE_DONE_MS) {
+      return CLIENT_PIPELINE.map((step) => ({ ...step, status: "success" }));
+    }
+    if (elapsed >= GITOPS_WAIT_MS) {
+      return CLIENT_PIPELINE.map((step) => ({
+        ...step,
+        status:
+          step.id === "verify"
+            ? "running"
+            : step.id === "trigger" || step.id === "build" || step.id === "deploy"
+              ? "success"
+              : "pending",
+      }));
+    }
   }
 
   const s = {};
