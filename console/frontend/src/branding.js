@@ -2,32 +2,55 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v34";
+export const CONSOLE_VERSION = "v35";
+
+export const VALUE_PILLARS = [
+  {
+    value: "Self-hosted",
+    label: "Your OKE cluster",
+    icon: "⬡",
+  },
+  {
+    value: "Open stack",
+    label: "Kestra · ArgoCD · GitOps",
+    icon: "◎",
+  },
+  {
+    value: "Portable",
+    label: "Any Kubernetes cloud",
+    icon: "⟡",
+  },
+  {
+    value: "Observable",
+    label: "Live pipeline view",
+    icon: "◉",
+  },
+];
 
 /** Platform status cards — icon, tagline, accent */
 export const STATUS_META = {
   console: {
     icon: "⊞",
     tag: "Control plane",
-    hint: "This dashboard",
+    hint: "Self-hosted platform console",
     accent: "purple",
   },
   application: {
     icon: "◉",
     tag: "Workload",
-    hint: "Deployed FastAPI service",
+    hint: "Sample app on your cluster",
     accent: "green",
   },
   kestra: {
     icon: "⚡",
     tag: "Orchestration",
-    hint: "Build & deploy automation",
+    hint: "Open-source workflow engine",
     accent: "amber",
   },
   gitops: {
     icon: "⟳",
     tag: "GitOps",
-    hint: "ArgoCD cluster sync",
+    hint: "ArgoCD — declarative deploys",
     accent: "blue",
   },
 };
@@ -35,23 +58,23 @@ export const STATUS_META = {
 export const HOME_STEPS = [
   {
     step: "1",
-    title: "Trigger the pipeline",
-    body: "One click starts orchestration — build, deploy, and verify.",
+    title: "Orchestrate on your cluster",
+    body: "Kestra runs the workflow on self-hosted Kubernetes — no external SaaS deploy dependency.",
   },
   {
     step: "2",
-    title: "Watch it live",
-    body: "Progress and logs update in real time as each stage completes.",
+    title: "Build with open tooling",
+    body: "Kaniko builds the container image inside the cluster and pushes to your registry (OCIR).",
   },
   {
     step: "3",
-    title: "GitOps deploys automatically",
-    body: "The manifest is committed to GitHub and synced to Kubernetes.",
+    title: "GitOps — you own the source",
+    body: "Manifests commit to your Git repo; ArgoCD syncs to the cluster you control.",
   },
   {
     step: "4",
-    title: "See the result",
-    body: "The application updates with a live health check proving the rollout worked.",
+    title: "Verify on your infrastructure",
+    body: "Health checks run against the live app on your stack — full traceability end to end.",
   },
 ];
 

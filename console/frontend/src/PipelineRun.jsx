@@ -394,17 +394,18 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
         <section className="run-idle">
           <div className="run-idle-inner">
             <p className="run-eyebrow">DEPLOYMENT PIPELINE</p>
-            <h1>Build → GitOps → Health check</h1>
+            <h1>Self-hosted delivery pipeline</h1>
             <p className="run-idle-lead">
-              Review the four stages below, then start when you are ready. Progress and logs
-              stream live from Kubernetes and Kestra.
+              This workflow runs on your Kubernetes cluster using open components — Kestra
+              orchestration, Kaniko builds, GitOps via ArgoCD, and health verification on your
+              infrastructure. Start when you are ready to walk through the flow.
             </p>
             <button
               type="button"
               className="el-btn el-btn-primary el-btn-hero el-btn-glow"
               onClick={startPipeline}
             >
-              Start deployment →
+              Run pipeline on cluster →
             </button>
             <div className="run-idle-preview">
               {CLIENT_PIPELINE.map((step) => (

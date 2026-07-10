@@ -5,6 +5,7 @@ import {
   HOME_STATUS_KEYS,
   HOME_STEPS,
   STATUS_META,
+  VALUE_PILLARS,
 } from "./branding";
 
 function ExternalLink({ href, children, className = "" }) {
@@ -66,7 +67,6 @@ export default function Home({ onRunDemo }) {
     return () => clearInterval(id);
   }, [fetchStatus]);
 
-  const appOk = status?.services?.application?.ok;
   const links = status?.links || {};
   const appUrl = status?.demo?.app_url || links.application;
   const demoLive = status?.demo?.demo_live;
@@ -126,7 +126,7 @@ export default function Home({ onRunDemo }) {
             {resetting ? "…" : "↺ Reset"}
           </button>
           <button type="button" className="el-btn el-btn-primary el-btn-header el-btn-glow" onClick={onRunDemo}>
-            Open pipeline →
+            View pipeline →
           </button>
         </div>
       </header>
@@ -135,26 +135,22 @@ export default function Home({ onRunDemo }) {
 
       <main className="el-main-v2">
         <section className="el-hero-v2">
-          <p className="el-eyebrow">KUBERNETES · GITOPS · AUTOMATION</p>
+          <p className="el-eyebrow">SELF-HOSTED · OPEN STACK · PLATFORM INDEPENDENT</p>
           <h1>
-            Ship code to production with <span className="el-accent-text">one click</span>
+            DevOps on <span className="el-accent-text">your infrastructure</span>
           </h1>
           <p className="el-lead">
-            Build, deploy, and verify in one flow — with live progress, logs, and platform links
-            as each stage completes.
+            Enlight Lab DevOps Local Stack runs entirely on your Kubernetes cluster — Kestra,
+            ArgoCD, Kaniko, and GitOps you operate and own. No dependency on a proprietary
+            cloud deploy platform; portable to any K8s environment.
           </p>
 
           <button type="button" className="el-btn el-btn-primary el-btn-hero el-btn-glow" onClick={onRunDemo}>
-            Open deployment pipeline →
+            Explore the pipeline →
           </button>
 
           <div className="el-stat-orbit">
-            {[
-              { value: "~2 min", label: "Full pipeline", icon: "⚡" },
-              { value: "Live logs", label: "Real-time view", icon: "◎" },
-              { value: "GitOps", label: "Auto deploy", icon: "⟳" },
-              { value: appOk ? "App live ✓" : "Checking…", label: "Status", icon: "◉" },
-            ].map((s) => (
+            {VALUE_PILLARS.map((s) => (
               <div key={s.label} className="el-stat-orbit-card">
                 <span className="el-stat-icon" aria-hidden>
                   {s.icon}
@@ -166,12 +162,22 @@ export default function Home({ onRunDemo }) {
           </div>
         </section>
 
+        <section className="el-section el-section-v2 el-value-strip">
+          <div className="el-value-strip-inner">
+            <p>
+              <strong>Why this matters:</strong> Build, registry, GitOps, and runtime all live
+              under your control on OKE today — and the same pattern transfers to AWS EKS, Azure
+              AKS, or on-prem Kubernetes without rewriting the workflow.
+            </p>
+          </div>
+        </section>
+
         <section
           className={`el-section el-section-v2 el-reveal-section ${bentoReveal.visible ? "is-visible" : ""}`}
           ref={bentoReveal.ref}
         >
-          <p className="el-section-label">HOW IT WORKS</p>
-          <h2 className="el-section-title">Four stages from code to production</h2>
+          <p className="el-section-label">THE WORKFLOW</p>
+          <h2 className="el-section-title">How the self-hosted stack delivers</h2>
           <div className="el-bento">
             {HOME_STEPS.map((s, i) => (
               <article
@@ -193,8 +199,8 @@ export default function Home({ onRunDemo }) {
           className={`el-section el-section-v2 el-status-section ${statusReveal.visible ? "is-visible" : ""}`}
           ref={statusReveal.ref}
         >
-          <p className="el-section-label">PLATFORM STATUS</p>
-          <h2 className="el-section-title">Your stack at a glance</h2>
+          <p className="el-section-label">YOUR STACK</p>
+          <h2 className="el-section-title">Services running on your cluster</h2>
           {error && <p className="el-error">{error}</p>}
           {status && (
             <div className="el-status-constellation">
