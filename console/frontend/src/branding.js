@@ -2,7 +2,7 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v37";
+export const CONSOLE_VERSION = "v38";
 
 /** Minimum elapsed time before each phase can show success (demo pacing). */
 export const DEMO_PACE_MS = {

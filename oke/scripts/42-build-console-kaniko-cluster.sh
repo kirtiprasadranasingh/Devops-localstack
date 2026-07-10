@@ -3,7 +3,7 @@
 set -euo pipefail
 
 NS="${NS:-enlight-platform}"
-TAG="${CONSOLE_TAG:-v37}"
+TAG="${CONSOLE_TAG:-v38}"
 IMAGE="ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:${TAG}"
 BUILDER="ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v9"
 GIT_REPO="${GIT_REPO:-https://github.com/kirtiprasadranasingh/Devops-localstack.git}"
@@ -18,6 +18,8 @@ echo "=========================================="
 
 # Remove previous failed job if any
 kubectl delete job "${JOB}" -n "${NS}" --ignore-not-found=true
+# Also clear stuck v37 job from multi-stage failure
+kubectl delete job enlight-console-build-v37 -n "${NS}" --ignore-not-found=true
 sleep 2
 
 kubectl apply -f - <<EOF
@@ -52,10 +54,12 @@ spec:
               DOCKERFILE="\${BUILD_CTX}/Dockerfile.oke"
               test -f "\${DOCKERFILE}" || DOCKERFILE="\${BUILD_CTX}/Dockerfile"
               test -f "\${BUILD_CTX}/backend/requirements.txt"
-              test -f "\${BUILD_CTX}/frontend/package.json"
-              echo "==> Build context:"
+              test -d "\${BUILD_CTX}/frontend/dist"
+              test -f "\${BUILD_CTX}/frontend/dist/index.html"
+              echo "==> Build context (single-stage; uses committed frontend/dist):"
               ls -la "\${BUILD_CTX}/"
               ls -la "\${BUILD_CTX}/backend/"
+              ls -la "\${BUILD_CTX}/frontend/dist/"
               echo "==> Kaniko build -> ${IMAGE} (\${DOCKERFILE})"
               export DOCKER_CONFIG=/kaniko/.docker
               /kaniko/executor \
