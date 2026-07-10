@@ -2,13 +2,14 @@ id: oke-dagger-gitops-pipeline
 namespace: main
 
 description: |
-  Full OKE pipeline — Dagger build, OCIR push, GitOps commit, ArgoCD sync, health check.
+  Full OKE pipeline — Kaniko build in-cluster, OCIR push, GitOps commit, ArgoCD sync, health check.
   Secrets: GITHUB_TOKEN, OCIR_USERNAME, OCIR_TOKEN
-  Requires image: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v1
+  Requires image: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v9
 
 labels:
   env: oke
   project: enlight-lab
+  flow-version: "2026-07-10-v5"
 
 inputs:
   - id: git_branch
@@ -19,7 +20,7 @@ inputs:
     defaults: https://github.com/kirtiprasadranasingh/Devops-localstack.git
   - id: image_tag
     type: STRING
-    required: false
+    defaults: ""
   - id: ocir_registry
     type: STRING
     defaults: ap-mumbai-1.ocir.io/bmitpaosivqx
@@ -28,7 +29,7 @@ inputs:
     defaults: enlight-fastapi
   - id: pipeline_image
     type: STRING
-    defaults: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v1
+    defaults: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v9
   - id: gitops_manifest
     type: STRING
     defaults: oke/gitops/apps/fastapi/deployment.yaml
@@ -43,12 +44,6 @@ inputs:
     defaults: http://fastapi-minimal.enlight-platform.svc.cluster.local:8000/health
 
 tasks:
-  - id: health-before
-    type: io.kestra.plugin.core.http.Request
-    uri: "{{ inputs.app_health_url }}"
-    method: GET
-    timeout: PT30S
-
   - id: run-pipeline-job
     type: io.kestra.plugin.kubernetes.kubectl.Apply
     namespace: "{{ inputs.k8s_namespace }}"
@@ -60,7 +55,7 @@ tasks:
         namespace: {{ inputs.k8s_namespace }}
       spec:
         backoffLimit: 0
-        ttlSecondsAfterFinished: 900
+        ttlSecondsAfterFinished: 3600
         activeDeadlineSeconds: 3600
         template:
           spec:
@@ -68,12 +63,23 @@ tasks:
             imagePullSecrets:
               - name: ocir-pull-secret
             restartPolicy: Never
+            volumes:
+              - name: ocir-docker-config
+                secret:
+                  secretName: ocir-pull-secret
+                  items:
+                    - key: .dockerconfigjson
+                      path: config.json
             containers:
               - name: pipeline
                 image: {{ inputs.pipeline_image }}
+                imagePullPolicy: Always
                 command:
+                  - /bin/bash
                   - /pipeline/run.sh
                 env:
+                  - name: DOCKER_CONFIG
+                    value: /kaniko/.docker
                   - name: GIT_BRANCH
                     value: "{{ inputs.git_branch }}"
                   - name: GIT_REPO
@@ -88,10 +94,10 @@ tasks:
                     value: "{{ inputs.image_tag }}"
                   - name: GITHUB_TOKEN
                     value: "{{ secret('GITHUB_TOKEN') }}"
-                  - name: OCIR_USER
-                    value: "{{ secret('OCIR_USERNAME') }}"
-                  - name: OCIR_PASS
-                    value: "{{ secret('OCIR_TOKEN') }}"
+                volumeMounts:
+                  - name: ocir-docker-config
+                    mountPath: /kaniko/.docker
+                    readOnly: true
                 resources:
                   requests:
                     cpu: 500m
@@ -102,24 +108,17 @@ tasks:
 
   - id: wait-pipeline
     type: io.kestra.plugin.core.flow.Sleep
-    duration: PT15M
-
-  - id: rollout-status
-    type: io.kestra.plugin.kubernetes.kubectl.Restart
-    namespace: "{{ inputs.k8s_namespace }}"
-    resourceType: Deployment
-    resourcesNames:
-      - "{{ inputs.k8s_deployment }}"
-
-  - id: wait-rollout
-    type: io.kestra.plugin.core.flow.Sleep
-    duration: PT45S
+    duration: PT90S
 
   - id: health-after
     type: io.kestra.plugin.core.http.Request
     uri: "{{ inputs.app_health_url }}"
     method: GET
     timeout: PT30S
+    retry:
+      type: constant
+      interval: PT15S
+      maxAttempt: 8
 
   - id: done
     type: io.kestra.plugin.core.log.Log

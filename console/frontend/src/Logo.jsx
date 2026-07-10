@@ -1,12 +1,10 @@
-export default function EnlightLogo({ size = 40, className = "" }) {
+export default function EnlightLogo({ className = "" }) {
   return (
-    <img
-      src="/enlight-logo.png"
-      alt="Enlight Lab"
-      width={size}
-      height={size}
-      className={className}
-      style={{ display: "block", objectFit: "contain" }}
-    />
+    <span className={`el-logo ${className}`}>
+      <span className="el-logo-mark" aria-hidden="true">
+        {"{·}"}
+      </span>
+      <span className="el-logo-text">Enlight Lab</span>
+    </span>
   );
 }

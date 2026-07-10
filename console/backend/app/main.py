@@ -13,7 +13,17 @@ from pydantic import BaseModel, Field
 
 from .branding import DOMAIN_BASE, INGRESS_ROUTES
 from .config import settings
-from .kestra_client import flow_exists, make_client, trigger_execution
+from .kestra_client import (
+    flow_exists,
+    get_execution,
+    get_execution_logs,
+    get_flow,
+    make_client,
+    parse_flow_meta,
+    trigger_execution,
+)
+from .k8s_demo import ensure_argocd_app, get_demo_state, reset_demo_app
+from .k8s_logs import get_job_logs, job_name_for_execution
 
 app = FastAPI(title=settings.app_name, version="1.0.0")
 
@@ -24,7 +34,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+PIPELINE_IMAGE_V9 = "ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v9"
+K8S_DEMO_NAMESPACE = "enlight-platform"
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+
+def _execution_error(data: dict[str, Any]) -> str | None:
+    """Extract a client-friendly error from a failed Kestra execution."""
+    for tr in data.get("taskRunList") or []:
+        tstate = (tr.get("state") or {}).get("current")
+        if tstate in ("FAILED", "KILLED"):
+            tid = tr.get("taskId", "task")
+            msg = (tr.get("state") or {}).get("message") or ""
+            if msg:
+                return f"{tid}: {msg[:300]}"
+            return f"Task '{tid}' failed"
+    top = (data.get("state") or {}).get("message")
+    return str(top)[:300] if top else None
 
 
 class DeployRequest(BaseModel):
@@ -109,7 +135,12 @@ async def probe(url: str, path: str = "", timeout: float = 4.0) -> dict[str, Any
 
 @app.get("/api/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "service": settings.app_name, "mode": settings.mode}
+    return {
+        "status": "ok",
+        "service": settings.app_name,
+        "mode": settings.mode,
+        "console_version": "v21",
+    }
 
 
 @app.get("/api/info")
@@ -139,6 +170,9 @@ async def platform_info() -> dict[str, Any]:
         "flow_ready": flow_ready,
         "flow_description": settings.flow_description,
         "flow_url": settings.kestra_flow_url(),
+        "pipeline_image": settings.pipeline_image if settings.mode == "oke" else None,
+        "build_engine": settings.build_engine,
+        "expected_pipeline_image": PIPELINE_IMAGE_V9,
         "public_base_url": settings.public_base_url,
         "kestra_ui": settings.kestra_ui_base,
         "kestra_auth_configured": bool(settings.kestra_username and settings.kestra_password),
@@ -167,6 +201,7 @@ async def platform_status() -> dict[str, Any]:
     active = [s for s in services.values() if not s.get("skipped")]
     healthy = sum(1 for s in active if s.get("ok"))
     info = await platform_info()
+    demo_state = get_demo_state() if settings.mode == "oke" else {}
     return {
         "mode": settings.mode,
         "healthy_count": healthy,
@@ -189,7 +224,7 @@ async def platform_status() -> dict[str, Any]:
         "service_labels": {
             "console": "Platform console",
             "application": "Demo application",
-            "registry": "Image registry (OCIR)",
+            "registry": "Container registry",
             "kestra": "Pipeline automation",
             "gitops": "GitOps (ArgoCD)",
             "netdata": "Monitoring (Grafana)",
@@ -211,16 +246,19 @@ async def platform_status() -> dict[str, Any]:
             "health_url": f"{settings.app_public_url.rstrip('/')}/health",
             "deploy_target": settings.deploy_target,
             "uses_dagger": settings.uses_dagger,
+            "build_engine": settings.build_engine if settings.mode == "oke" else None,
             "build_note": (
-                "Dagger builds the image inside Kestra, pushes to OCIR, "
-                "and ArgoCD deploys the GitOps manifest to OKE."
-                if settings.mode == "oke" and settings.uses_dagger
+                "Kaniko builds the image inside a Kubernetes Job, pushes to the registry, "
+                "and ArgoCD deploys the GitOps manifest to the cluster."
+                if settings.mode == "oke"
+                and settings.kestra_flow_id == "oke-dagger-gitops-pipeline"
                 else (
                     "Dagger builds the image inside the Kestra flow."
                     if settings.uses_dagger
                     else "Build runs via Dagger on your local machine."
                 )
             ),
+            **demo_state,
         },
         "app_note": (
             "Demo app at app."
@@ -263,11 +301,25 @@ async def trigger_deploy(body: DeployRequest | None = None) -> dict[str, Any]:
         inputs["k8s_namespace"] = "enlight-platform"
         inputs["k8s_deployment"] = "fastapi-minimal"
         if flow_id == "oke-dagger-gitops-pipeline":
+            from datetime import datetime, timezone
+
+            ensure = ensure_argocd_app(settings.github_repo)
+            if not ensure.get("ok"):
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "message": "Could not register ArgoCD app before deploy",
+                        "hint": "Apply oke/manifests/32-console-rbac.yaml and retry.",
+                        **ensure,
+                    },
+                )
+
             inputs["git_repo"] = settings.github_repo
             inputs["gitops_manifest"] = "oke/gitops/apps/fastapi/deployment.yaml"
-            inputs["argocd_app"] = "fastapi-minimal"
             inputs["ocir_registry"] = "ap-mumbai-1.ocir.io/bmitpaosivqx"
             inputs["ocir_image_name"] = "enlight-fastapi"
+            inputs["pipeline_image"] = settings.pipeline_image or PIPELINE_IMAGE_V9
+            inputs["image_tag"] = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
     try:
         async with kestra_client(timeout=30.0) as client:
@@ -300,12 +352,16 @@ async def trigger_deploy(body: DeployRequest | None = None) -> dict[str, Any]:
                 )
             data = response.json()
             execution_id = data.get("id")
+            job_name = job_name_for_execution(str(execution_id))
             return {
                 "triggered": True,
                 "execution_id": execution_id,
                 "flow_id": flow_id,
                 "state": data.get("state", {}).get("current"),
                 "url": settings.kestra_execution_url(str(execution_id), flow_id),
+                "pipeline_image": inputs.get("pipeline_image"),
+                "job_name": job_name,
+                "run_page": f"/run?id={execution_id}",
             }
     except HTTPException:
         raise
@@ -317,6 +373,110 @@ async def trigger_deploy(body: DeployRequest | None = None) -> dict[str, Any]:
                 "hint": "Ensure Kestra is running and console has KESTRA_USERNAME/PASSWORD.",
             },
         ) from exc
+
+
+@app.post("/api/demo/reset")
+async def reset_demo() -> dict[str, Any]:
+    """Remove demo app from ArgoCD + cluster for a clean pipeline redeploy."""
+    if settings.mode != "oke":
+        raise HTTPException(status_code=404, detail="Demo reset only available in OKE mode")
+    result = reset_demo_app(settings.github_repo)
+    if not result.get("ok"):
+        raise HTTPException(status_code=502, detail=result)
+    return result
+
+
+@app.get("/api/executions/{execution_id}")
+async def execution_status(execution_id: str) -> dict[str, Any]:
+    if settings.mode != "oke" or not (settings.kestra_username and settings.kestra_password):
+        raise HTTPException(status_code=404, detail="Execution status only available in OKE mode")
+    try:
+        async with kestra_client(timeout=15.0) as client:
+            data = await get_execution(
+                client,
+                settings.kestra_url,
+                settings.kestra_namespace,
+                execution_id,
+            )
+            if not data:
+                raise HTTPException(status_code=404, detail="Execution not found")
+            state = data.get("state", {})
+            return {
+                "execution_id": execution_id,
+                "flow_id": data.get("flowId"),
+                "state": state.get("current"),
+                "url": settings.kestra_execution_url(execution_id, data.get("flowId")),
+                "error": _execution_error(data),
+                "tasks": [
+                    {
+                        "id": tr.get("taskId"),
+                        "state": (tr.get("state") or {}).get("current"),
+                        "duration": tr.get("duration"),
+                    }
+                    for tr in (data.get("taskRunList") or [])
+                ],
+            }
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/flow/meta")
+async def flow_meta() -> dict[str, Any]:
+    """Return live Kestra flow config — detect stale PT15M / old pipeline image."""
+    if settings.mode != "oke":
+        return {"ok": False}
+    try:
+        async with kestra_client(timeout=12.0) as client:
+            flow = await get_flow(
+                client,
+                settings.kestra_url,
+                settings.kestra_namespace,
+                settings.kestra_flow_id,
+            )
+            meta = parse_flow_meta(flow)
+            stale = (
+                meta.get("wait_duration") in ("PT15M", "PT8M", "PT3M")
+                or meta.get("has_rollout_restart")
+                or meta.get("has_health_before")
+                or (
+                    meta.get("pipeline_image_default")
+                    and "v9" not in str(meta.get("pipeline_image_default"))
+                )
+            )
+            return {
+                "ok": bool(flow),
+                "flow_id": settings.kestra_flow_id,
+                "stale": stale,
+                "expected_wait": "PT90S",
+                "expected_pipeline_image": PIPELINE_IMAGE_V9,
+                **meta,
+            }
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+@app.get("/api/executions/{execution_id}/logs")
+async def execution_logs(execution_id: str) -> dict[str, Any]:
+    if settings.mode != "oke":
+        raise HTTPException(status_code=404, detail="OKE mode only")
+    try:
+        async with kestra_client(timeout=15.0) as client:
+            kestra_lines = await get_execution_logs(
+                client,
+                settings.kestra_url,
+                settings.kestra_namespace,
+                execution_id,
+            )
+        job = get_job_logs(K8S_DEMO_NAMESPACE, execution_id, tail=150)
+        return {
+            "execution_id": execution_id,
+            "kestra": kestra_lines,
+            "job": job,
+        }
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 if FRONTEND_DIR.exists():

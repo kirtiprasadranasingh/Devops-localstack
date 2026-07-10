@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     kestra_username: str = ""
     kestra_password: str = ""
     github_repo: str = "https://github.com/kirtiprasadranasingh/Devops-localstack"
+    pipeline_image: str = "ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v9"
     mode: str = "local"  # local | oke
 
     @model_validator(mode="after")
@@ -104,15 +105,22 @@ class Settings(BaseSettings):
         return self.kestra_flow_id in (
             "dagger-dokploy-pipeline",
             "oke-ocir-pipeline",
-            "oke-dagger-gitops-pipeline",
         )
+
+    @property
+    def build_engine(self) -> str:
+        if self.kestra_flow_id == "oke-dagger-gitops-pipeline":
+            return "Kaniko"
+        if self.uses_dagger:
+            return "Dagger"
+        return "Kestra"
 
     @property
     def demo_proves(self) -> str:
         if self.kestra_flow_id == "oke-dagger-gitops-pipeline":
             return (
-                "Kestra clones your app from GitHub, Dagger builds and pushes the image to OCIR, "
-                "updates the GitOps manifest, ArgoCD syncs to OKE, and the pipeline verifies /health."
+                "Kestra clones your app from GitHub, Kaniko builds and pushes the image to the registry, "
+                "updates the GitOps manifest, ArgoCD syncs to the cluster, and the pipeline verifies /health."
             )
         if self.kestra_flow_id == "oke-deploy-simple":
             return (
@@ -131,9 +139,9 @@ class Settings(BaseSettings):
             "oke-health-check": "Health check only — proves console → Kestra → app.",
             "oke-deploy-simple": "Health check → rollout restart → health check (smoke test).",
             "oke-dagger-gitops-pipeline": (
-                "Clone → Dagger build → OCIR push → GitOps commit → ArgoCD sync → health."
+                "Clone → Kaniko build → registry push → GitOps commit → ArgoCD sync → health."
             ),
-            "oke-deploy-pipeline": "Git clone → Kaniko build → OCIR push → rollout (advanced).",
+            "oke-deploy-pipeline": "Git clone → Kaniko build → registry push → rollout (advanced).",
             "dagger-dokploy-pipeline": "Local only: Dagger build → Dokploy deploy.",
         }
         return descriptions.get(self.kestra_flow_id, "Kestra workflow")

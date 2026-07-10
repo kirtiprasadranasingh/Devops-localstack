@@ -1,0 +1,63 @@
+# RBAC for enlight-console: pipeline job logs + demo app reset via ArgoCD
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: enlight-console
+  namespace: enlight-platform
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: enlight-console-job-reader
+  namespace: enlight-platform
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: enlight-console-job-reader
+  namespace: enlight-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: enlight-console-job-reader
+subjects:
+  - kind: ServiceAccount
+    name: enlight-console
+    namespace: enlight-platform
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: enlight-console-argocd-demo
+  namespace: argocd
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list", "create", "delete", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: enlight-console-argocd-demo
+  namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: enlight-console-argocd-demo
+subjects:
+  - kind: ServiceAccount
+    name: enlight-console
+    namespace: enlight-platform
