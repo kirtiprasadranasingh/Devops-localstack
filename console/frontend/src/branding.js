@@ -2,7 +2,7 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v23";
+export const CONSOLE_VERSION = "v24";
 
 export const HOME_STEPS = [
   {
@@ -87,12 +87,16 @@ export function filterClientLogs(logs) {
   if (!logs) return [];
   const keep = [
     /^==>/,
+    /Enlight pipeline/i,
     /Clone GitHub|Cloning into/,
     /GitOps commit/,
     /\[main /,
     /deploy:/,
-    /Kaniko build/,
+    /Kaniko build/i,
     /^DONE /,
+    /INFO\[/,
+    /pip install/,
+    /Pushed /,
     /ERROR|Failed/i,
     /git: not found/,
   ];
@@ -100,6 +104,24 @@ export function filterClientLogs(logs) {
     .split("\n")
     .map((l) => l.trimEnd())
     .filter((line) => line && keep.some((re) => re.test(line)))
+    .slice(-40);
+}
+
+/** Prefer filtered build lines; fall back to a readable tail when filter is empty. */
+export function pickBuildLogLines(logs) {
+  const filtered = filterClientLogs(logs);
+  if (filtered.length) return filtered;
+  if (!logs) return [];
+  return logs
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .filter((line) => {
+      if (!line || line.length > 220) return false;
+      if (line.startsWith("==>")) return true;
+      if (/Clone|Kaniko|GitOps|deploy:|DONE |pip install|Pushed |INFO\[|ERROR/i.test(line))
+        return true;
+      return false;
+    })
     .slice(-30);
 }
 
@@ -239,7 +261,7 @@ export function progressPct(phases, execState) {
   return Math.min(pct, 99);
 }
 
-export function buildLiveFeed(kestraLines, jobLogs, apiTasks, execState) {
+export function buildLiveFeed(kestraLines, jobLogs, apiTasks, execState, jobMeta) {
   const seen = new Set();
   const out = [];
 
@@ -263,9 +285,15 @@ export function buildLiveFeed(kestraLines, jobLogs, apiTasks, execState) {
     if (human) add(human, "kestra");
   }
 
-  for (const line of filterClientLogs(jobLogs)) {
+  if (jobMeta?.hint) add(jobMeta.hint, "muted");
+  if (jobMeta?.error) add(`⚠ ${jobMeta.error}`, "error");
+  else if (jobMeta?.status === "pending") add("Waiting for pipeline job to start…", "muted");
+  else if (jobMeta?.status === "running" && !jobLogs) add("Build job running — fetching logs…", "muted");
+  else if (jobMeta?.job && jobMeta?.status) add(`Job ${jobMeta.job}: ${jobMeta.status}`, "info");
+
+  for (const line of pickBuildLogLines(jobLogs)) {
     add(line, "build");
   }
 
-  return out.slice(-35);
+  return out.slice(-40);
 }

@@ -82,11 +82,15 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
           fetch(`/api/executions/${executionId}/logs`),
         ]);
         if (execRes.ok && !cancelled) setExecution(await execRes.json());
-        if (logRes.ok && !cancelled) {
-          const data = await logRes.json();
-          setJobMeta(data.job);
-          setJobLogs(data.job?.logs || "");
-          setKestraLines(data.kestra || []);
+        if (!cancelled) {
+          if (logRes.ok) {
+            const data = await logRes.json();
+            setJobMeta(data.job || null);
+            setJobLogs(data.job?.logs || "");
+            setKestraLines(data.kestra || []);
+          } else if (logRes.status >= 400) {
+            setJobMeta({ status: "error", error: `Logs API ${logRes.status}` });
+          }
         }
       } catch {
         /* retry */
@@ -129,8 +133,8 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
   const activePhase = phases.find((p) => p.status === "running");
   const pct = progressPct(phases, execState);
   const liveFeed = useMemo(
-    () => buildLiveFeed(kestraLines, jobLogs, tasks, execState),
-    [kestraLines, jobLogs, tasks, execState]
+    () => buildLiveFeed(kestraLines, jobLogs, tasks, execState, jobMeta),
+    [kestraLines, jobLogs, tasks, execState, jobMeta]
   );
   const elapsed = formatElapsed(Date.now() - startedAt);
 
@@ -232,7 +236,12 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
             ))
           ) : (
             <div className="run-log-line muted">
-              {starting ? "Starting…" : "Waiting for build output…"}
+              {starting
+                ? "Starting…"
+                : jobMeta?.hint ||
+                  (jobMeta?.status === "pending"
+                    ? "Waiting for pipeline job to start…"
+                    : "Connecting to pipeline logs…")}
             </div>
           )}
           {!finished && <div className="run-log-cursor" aria-hidden />}

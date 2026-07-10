@@ -139,7 +139,7 @@ async def health() -> dict[str, str]:
         "status": "ok",
         "service": settings.app_name,
         "mode": settings.mode,
-        "console_version": "v23",
+        "console_version": "v24",
     }
 
 
@@ -477,22 +477,28 @@ async def flow_meta() -> dict[str, Any]:
 async def execution_logs(execution_id: str) -> dict[str, Any]:
     if settings.mode != "oke":
         raise HTTPException(status_code=404, detail="OKE mode only")
-    try:
-        async with kestra_client(timeout=15.0) as client:
-            kestra_lines = await get_execution_logs(
-                client,
-                settings.kestra_url,
-                settings.kestra_namespace,
-                execution_id,
-            )
-        job = get_job_logs(K8S_DEMO_NAMESPACE, execution_id, tail=150)
-        return {
-            "execution_id": execution_id,
-            "kestra": kestra_lines,
-            "job": job,
-        }
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    kestra_lines: list[dict[str, Any]] = []
+    kestra_error: str | None = None
+    if settings.kestra_username and settings.kestra_password:
+        try:
+            async with kestra_client(timeout=15.0) as client:
+                kestra_lines = await get_execution_logs(
+                    client,
+                    settings.kestra_url,
+                    settings.kestra_namespace,
+                    execution_id,
+                )
+        except Exception as exc:  # noqa: BLE001
+            kestra_error = str(exc)
+
+    job = get_job_logs(K8S_DEMO_NAMESPACE, execution_id, tail=200)
+    return {
+        "execution_id": execution_id,
+        "kestra": kestra_lines,
+        "job": job,
+        "kestra_error": kestra_error,
+    }
 
 
 if FRONTEND_DIR.exists():

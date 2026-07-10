@@ -100,31 +100,53 @@ async def get_execution_logs(
     lines: list[dict[str, Any]] = []
 
     execution = await get_execution(client, base_url, namespace, execution_id)
-    if execution:
-        state = (execution.get("state") or {}).get("current")
-        lines.append({"level": "INFO", "message": f"Execution state: {state}"})
-        for tr in execution.get("taskRunList") or []:
-            tid = tr.get("taskId", "?")
-            tstate = (tr.get("state") or {}).get("current", "?")
-            dur = tr.get("duration", "")
-            lines.append({"level": "INFO", "message": f"Task {tid}: {tstate} {dur}".strip()})
+    flow_id = (execution or {}).get("flowId") or ""
 
-    for path in (
+    if execution:
+        state = execution.get("state") or {}
+        current = state.get("current") if isinstance(state, dict) else state
+        lines.append({"level": "INFO", "message": f"Execution state: {current}"})
+        for tr in execution.get("taskRunList") or []:
+            tid = tr.get("taskId") or tr.get("id") or "?"
+            tstate = tr.get("state") or {}
+            current_state = tstate.get("current") if isinstance(tstate, dict) else tstate
+            dur = tr.get("duration", "")
+            lines.append(
+                {
+                    "level": "INFO",
+                    "message": f"Task {tid}: {current_state} {dur}".strip(),
+                }
+            )
+
+    log_paths = [
         f"/api/v1/main/executions/{namespace}/{execution_id}/logs/download",
-        f"/api/v1/logs/{execution_id}",
-    ):
+        f"/api/v1/main/executions/{namespace}/{execution_id}/logs",
+    ]
+    if flow_id:
+        log_paths.extend(
+            [
+                f"/api/v1/main/logs/{namespace}/{flow_id}/{execution_id}",
+                f"/api/v1/logs/{namespace}/{flow_id}/{execution_id}",
+            ]
+        )
+    log_paths.append(f"/api/v1/logs/{execution_id}")
+
+    for path in log_paths:
         try:
             response = await client.get(f"{base}{path}")
             if response.status_code != 200 or not response.text.strip():
                 continue
-            for raw in response.text.splitlines()[-50:]:
+            got = 0
+            for raw in response.text.splitlines()[-80:]:
                 raw = raw.strip()
                 if not raw:
                     continue
                 human = _humanize_kestra_log_line(raw)
                 if human:
                     lines.append({"level": "INFO", "message": human})
-            break
+                    got += 1
+            if got:
+                break
         except Exception:  # noqa: BLE001
             continue
 
@@ -147,8 +169,21 @@ def _humanize_kestra_log_line(raw: str) -> str | None:
             if j.get("level") == "ERROR" and msg:
                 short = msg.split("\n")[0][:140]
                 return f"Error ({tid}): {short}" if tid else f"Error: {short}"
-            if msg and len(msg) < 120 and not msg.startswith("{"):
+            if msg and len(msg) < 160 and not msg.startswith("{"):
                 return msg
+            if msg and any(
+                k in msg
+                for k in (
+                    "Clone",
+                    "Kaniko",
+                    "GitOps",
+                    "deploy:",
+                    "DONE",
+                    "Deploy complete",
+                    "health",
+                )
+            ):
+                return msg.split("\n")[0][:160]
             return None
         except Exception:  # noqa: BLE001
             return None
