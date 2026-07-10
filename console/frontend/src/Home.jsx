@@ -70,18 +70,24 @@ export default function Home({ onRunDemo }) {
   };
 
   return (
-    <div className="el-page">
-      <header className="el-header">
+    <div className="el-page el-page-v2">
+      <div className="el-mesh-bg" aria-hidden>
+        <span className="el-orb el-orb-a" />
+        <span className="el-orb el-orb-b" />
+        <span className="el-orb el-orb-c" />
+      </div>
+
+      <header className="el-header el-header-v2">
         <a className="el-header-brand" href="/">
           <EnlightLogo />
         </a>
-        <button type="button" className="el-btn el-btn-primary el-btn-header" onClick={onRunDemo}>
+        <button type="button" className="el-btn el-btn-primary el-btn-header el-btn-glow" onClick={onRunDemo}>
           Run client demo →
         </button>
       </header>
 
-      <main>
-        <section className="el-hero">
+      <main className="el-main-v2">
+        <section className="el-hero-v2">
           <p className="el-eyebrow">CLIENT DEMO · KUBERNETES · GITOPS</p>
           <h1>
             Ship code to production with <span className="el-accent-text">one click</span>
@@ -91,14 +97,21 @@ export default function Home({ onRunDemo }) {
             live animated view for your client.
           </p>
 
-          <div className="el-stat-row">
+          <button type="button" className="el-btn el-btn-primary el-btn-hero el-btn-glow" onClick={onRunDemo}>
+            Launch live demo →
+          </button>
+
+          <div className="el-stat-orbit">
             {[
-              { value: "~2 min", label: "Full pipeline" },
-              { value: "Live logs", label: "Client view" },
-              { value: "GitOps", label: "Auto deploy" },
-              { value: appOk ? "App live ✓" : "Checking…", label: "Status" },
+              { value: "~2 min", label: "Full pipeline", icon: "⚡" },
+              { value: "Live logs", label: "Client view", icon: "◎" },
+              { value: "GitOps", label: "Auto deploy", icon: "⟳" },
+              { value: appOk ? "App live ✓" : "Checking…", label: "Status", icon: "◉" },
             ].map((s) => (
-              <div key={s.label} className="el-stat-card">
+              <div key={s.label} className="el-stat-orbit-card">
+                <span className="el-stat-icon" aria-hidden>
+                  {s.icon}
+                </span>
                 <strong>{s.value}</strong>
                 <span>{s.label}</span>
               </div>
@@ -106,26 +119,25 @@ export default function Home({ onRunDemo }) {
           </div>
         </section>
 
-        <section className="el-section">
+        <section className="el-section el-section-v2">
           <p className="el-section-label">HOW THE DEMO WORKS</p>
           <h2 className="el-section-title">Four steps your client will see</h2>
-          <ol className="el-story-list">
-            {HOME_STEPS.map((s) => (
-              <li key={s.step}>
-                <span className="el-step-num">{s.step}</span>
-                <div>
-                  <h3>{s.title}</h3>
-                  <p>{s.body}</p>
-                </div>
-              </li>
+          <div className="el-bento">
+            {HOME_STEPS.map((s, i) => (
+              <article key={s.step} className={`el-bento-card el-bento-${i + 1}`}>
+                <span className="el-bento-num">{s.step}</span>
+                <h3>{s.title}</h3>
+                <p>{s.body}</p>
+                <span className="el-bento-shine" aria-hidden />
+              </article>
             ))}
-          </ol>
+          </div>
         </section>
 
-        <section className="el-section">
+        <section className="el-section el-section-v2">
           <p className="el-section-label">DEMO CONTROLS</p>
           <h2 className="el-section-title">Reset for a clean client run</h2>
-          <div className="el-demo-reset-card">
+          <div className="el-glass-card el-demo-reset-v2">
             <div className="el-demo-reset-copy">
               <p>
                 Remove the demo app from the cluster before a client presentation. Run the pipeline
@@ -158,16 +170,16 @@ export default function Home({ onRunDemo }) {
           </div>
         </section>
 
-        <section className="el-section">
+        <section className="el-section el-section-v2">
           <p className="el-section-label">PLATFORM STATUS</p>
           {error && <p className="el-error">{error}</p>}
           {status && (
-            <div className="el-status-grid">
+            <div className="el-status-orbit">
               {HOME_STATUS_KEYS.filter((name) => status.services[name]).map((name) => {
                 const svc = status.services[name];
                 const label = status.service_labels?.[name] || name;
                 return (
-                  <div key={name} className="el-status-card">
+                  <div key={name} className={`el-status-tile ${svc.ok ? "ok" : "down"}`}>
                     <span className={`el-status-dot ${svc.ok ? "ok" : "down"}`} />
                     <div>
                       <strong>{label}</strong>
@@ -186,7 +198,7 @@ export default function Home({ onRunDemo }) {
         </section>
       </main>
 
-      <footer className="el-footer">
+      <footer className="el-footer el-footer-v2">
         <span>© 2026 Enlight Lab · Console {CONSOLE_VERSION}</span>
         <ExternalLink href={appUrl}>Demo app →</ExternalLink>
       </footer>

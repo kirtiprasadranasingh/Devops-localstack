@@ -2,7 +2,7 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v30";
+export const CONSOLE_VERSION = "v31";
 
 export const HOME_STEPS = [
   {
@@ -100,6 +100,47 @@ export function parseLogMilestones(logs) {
     done: /DONE ap-mumbai/.test(text),
     failed: /git: not found|ERROR:|Failed/.test(text),
   };
+}
+
+export function cachePipelineState(execId, payload) {
+  if (!execId || !payload?.state) return;
+  if (!["SUCCESS", "FAILED", "KILLED"].includes(payload.state)) return;
+  try {
+    sessionStorage.setItem(
+      `el-pipeline-${execId}`,
+      JSON.stringify({
+        state: payload.state,
+        tasks: payload.tasks || [],
+        phases: payload.phases || [],
+        pct: payload.pct,
+        savedAt: Date.now(),
+      })
+    );
+  } catch {
+    /* private mode */
+  }
+}
+
+export function loadCachedPipeline(execId) {
+  if (!execId) return null;
+  try {
+    const raw = sessionStorage.getItem(`el-pipeline-${execId}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function applyServerPhases(serverPhases, clientPhases) {
+  if (!serverPhases?.length) return clientPhases;
+  const statusById = Object.fromEntries(serverPhases.map((p) => [p.id, p.status]));
+  if (serverPhases.every((p) => p.status === "success")) {
+    return clientPhases.map((step) => ({ ...step, status: "success" }));
+  }
+  return clientPhases.map((step) => ({
+    ...step,
+    status: statusById[step.id] || step.status || "pending",
+  }));
 }
 
 export function filterClientLogs(logs) {
@@ -236,7 +277,22 @@ export function mergeTaskStates(apiTasks, kestraLines, milestones, jobMeta) {
   return tm;
 }
 
-export function resolvePhases(taskMap, execState, milestones, jobMeta, apiTasks, buildDoneAtMs) {
+export function resolvePhases(
+  taskMap,
+  execState,
+  milestones,
+  jobMeta,
+  apiTasks,
+  buildDoneAtMs,
+  serverPhases
+) {
+  if (serverPhases?.length) {
+    return applyServerPhases(
+      serverPhases,
+      CLIENT_PIPELINE.map((step) => ({ ...step, status: "pending" }))
+    );
+  }
+
   const tm = taskMap;
   const job = tm["run-pipeline-job"];
   const wait = tm["wait-pipeline"];
@@ -250,6 +306,10 @@ export function resolvePhases(taskMap, execState, milestones, jobMeta, apiTasks,
     tracked.length >= 3 && tracked.every((t) => t.state === "SUCCESS");
 
   if (allTasksSuccess || inferredExec === "SUCCESS" || done === "SUCCESS") {
+    return CLIENT_PIPELINE.map((step) => ({ ...step, status: "success" }));
+  }
+
+  if (health === "SUCCESS" && (wait === "SUCCESS" || milestones.gitPushed || jobPhase === "complete")) {
     return CLIENT_PIPELINE.map((step) => ({ ...step, status: "success" }));
   }
 
@@ -272,6 +332,24 @@ export function resolvePhases(taskMap, execState, milestones, jobMeta, apiTasks,
     }
   }
 
+  // Refresh: build logs show GitOps commit — don't rewind to ArgoCD running
+  if (milestones.gitPushed && milestones.done && jobPhase === "complete") {
+    if (health === "SUCCESS" || done === "SUCCESS" || wait === "SUCCESS") {
+      return CLIENT_PIPELINE.map((step) => ({ ...step, status: "success" }));
+    }
+    return CLIENT_PIPELINE.map((step) => ({
+      ...step,
+      status:
+        step.id === "verify"
+          ? health === "RUNNING"
+            ? "running"
+            : "running"
+          : step.id === "trigger" || step.id === "build" || step.id === "deploy"
+            ? "success"
+            : "pending",
+    }));
+  }
+
   const s = {};
   s.trigger = "success";
 
@@ -283,14 +361,20 @@ export function resolvePhases(taskMap, execState, milestones, jobMeta, apiTasks,
   else s.build = "pending";
 
   if (wait === "FAILED") s.deploy = "failed";
-  else if (wait === "SUCCESS" || health === "SUCCESS" || health === "RUNNING" || done === "SUCCESS")
+  else if (
+    wait === "SUCCESS" ||
+    health === "SUCCESS" ||
+    health === "RUNNING" ||
+    done === "SUCCESS" ||
+    (milestones.gitPushed && s.build === "success")
+  )
     s.deploy = "success";
   else if (s.build === "success") s.deploy = "running";
   else s.deploy = "pending";
 
   if (health === "FAILED" || done === "FAILED") s.verify = "failed";
   else if (health === "SUCCESS" || done === "SUCCESS") s.verify = "success";
-  else if (wait === "SUCCESS" || health === "RUNNING") s.verify = "running";
+  else if (wait === "SUCCESS" || health === "RUNNING" || milestones.gitPushed) s.verify = "running";
   else s.verify = "pending";
 
   if (inferredExec === "FAILED") {

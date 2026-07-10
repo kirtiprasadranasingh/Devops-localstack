@@ -279,30 +279,133 @@ def summary_from_kestra_lines(lines: list[dict[str, Any]]) -> dict[str, Any]:
     return {"state": state, "tasks": tasks, "flow_id": None}
 
 
-def compute_pipeline_ui(execution_summary: dict[str, Any], job: dict[str, Any], logs: str) -> dict[str, Any]:
-    """Server-side phase state — Kestra tasks when available, else K8s build job status."""
+def compute_pipeline_ui(
+    execution_summary: dict[str, Any],
+    job: dict[str, Any],
+    logs: str,
+    kestra_lines: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Server-side phase state — Kestra tasks, log lines, and K8s build job."""
     import re
 
-    tasks = execution_summary.get("tasks") or []
-    task_map = {t["id"]: t["state"] for t in tasks if t.get("id")}
-    ex_state = execution_summary.get("state")
+    tasks: list[dict[str, Any]] = list(execution_summary.get("tasks") or [])
+    task_map: dict[str, str] = {t["id"]: t["state"] for t in tasks if t.get("id")}
+
+    for t in summary_from_kestra_lines(kestra_lines or []).get("tasks") or []:
+        tid = t.get("id")
+        if tid and tid not in task_map:
+            task_map[tid] = t["state"]
+            tasks.append(t)
+
+    for line in kestra_lines or []:
+        msg = (line.get("message") if isinstance(line, dict) else str(line)) or ""
+        if "Execution state: SUCCESS" in msg:
+            execution_summary["state"] = "SUCCESS"
+        if "Health check passed" in msg or "response code '200'" in msg:
+            task_map["health-after"] = "SUCCESS"
+        if "Deployment complete" in msg or "Deploy complete" in msg:
+            task_map["done"] = "SUCCESS"
+            task_map["wait-pipeline"] = task_map.get("wait-pipeline") or "SUCCESS"
+            task_map["health-after"] = task_map.get("health-after") or "SUCCESS"
+            task_map["run-pipeline-job"] = task_map.get("run-pipeline-job") or "SUCCESS"
+
     build_done = job.get("status") == "complete" and bool(
         re.search(r"DONE ap-mumbai", logs or "")
     )
+    git_pushed = bool(re.search(r"GitOps commit|deploy:.*\[kestra pipeline\]", logs or ""))
 
-    if ex_state == "SUCCESS" or task_map.get("done") == "SUCCESS":
-        return {"state": "SUCCESS", "pct": 100, "tasks": tasks}
+    if job.get("status") == "complete":
+        task_map["run-pipeline-job"] = task_map.get("run-pipeline-job") or "SUCCESS"
+    elif job.get("status") == "failed":
+        task_map["run-pipeline-job"] = "FAILED"
 
-    if task_map.get("health-after") == "SUCCESS":
-        return {"state": "RUNNING", "pct": 92, "tasks": tasks}
+    ex_state = execution_summary.get("state")
+    wait = task_map.get("wait-pipeline")
+    health = task_map.get("health-after")
+    done = task_map.get("done")
+    job_state = task_map.get("run-pipeline-job")
 
-    if task_map.get("wait-pipeline") == "SUCCESS":
-        return {"state": "RUNNING", "pct": 78, "tasks": tasks}
+    tracked = [t for t in tasks if t.get("id") and t.get("state")]
+    all_success = bool(tracked) and all(t.get("state") == "SUCCESS" for t in tracked)
 
-    if build_done or task_map.get("run-pipeline-job") == "SUCCESS":
-        return {"state": "RUNNING", "pct": 65, "tasks": tasks}
+    is_success = (
+        ex_state == "SUCCESS"
+        or done == "SUCCESS"
+        or all_success
+        or (health == "SUCCESS" and wait == "SUCCESS")
+        or (health == "SUCCESS" and build_done and git_pushed)
+        or (health == "SUCCESS" and build_done and wait == "SUCCESS")
+    )
 
-    return {"state": ex_state or "RUNNING", "pct": 40, "tasks": tasks}
+    if is_success:
+        phases = [
+            {"id": "trigger", "status": "success"},
+            {"id": "build", "status": "success"},
+            {"id": "deploy", "status": "success"},
+            {"id": "verify", "status": "success"},
+        ]
+        return {"state": "SUCCESS", "pct": 100, "tasks": tasks, "phases": phases}
+
+    if job_state == "FAILED" or job.get("status") == "failed":
+        return {
+            "state": "FAILED",
+            "pct": 40,
+            "tasks": tasks,
+            "phases": [
+                {"id": "trigger", "status": "success"},
+                {"id": "build", "status": "failed"},
+                {"id": "deploy", "status": "pending"},
+                {"id": "verify", "status": "pending"},
+            ],
+        }
+
+    if health == "SUCCESS" or (wait == "SUCCESS" and build_done):
+        phases = [
+            {"id": "trigger", "status": "success"},
+            {"id": "build", "status": "success"},
+            {"id": "deploy", "status": "success"},
+            {"id": "verify", "status": "running" if health != "SUCCESS" else "success"},
+        ]
+        pct = 92 if health != "SUCCESS" else 100
+        return {"state": "RUNNING", "pct": pct, "tasks": tasks, "phases": phases}
+
+    if wait == "SUCCESS" or git_pushed:
+        return {
+            "state": "RUNNING",
+            "pct": 78,
+            "tasks": tasks,
+            "phases": [
+                {"id": "trigger", "status": "success"},
+                {"id": "build", "status": "success"},
+                {"id": "deploy", "status": "success"},
+                {"id": "verify", "status": "running"},
+            ],
+        }
+
+    if build_done or job_state == "SUCCESS":
+        return {
+            "state": "RUNNING",
+            "pct": 65,
+            "tasks": tasks,
+            "phases": [
+                {"id": "trigger", "status": "success"},
+                {"id": "build", "status": "success"},
+                {"id": "deploy", "status": "running"},
+                {"id": "verify", "status": "pending"},
+            ],
+        }
+
+    return {
+        "state": ex_state or "RUNNING",
+        "pct": 40,
+        "tasks": tasks,
+        "phases": [
+            {"id": "trigger", "status": "success"},
+            {"id": "build", "status": "running" if job.get("status") == "running" else "pending"},
+            {"id": "deploy", "status": "pending"},
+            {"id": "verify", "status": "pending"},
+        ],
+    }
 
 
 async def trigger_execution(
