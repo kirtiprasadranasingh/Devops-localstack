@@ -4,8 +4,9 @@ set -euo pipefail
 NS=enlight-platform
 IMAGE=ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:v20
 
-kubectl patch deployment enlight-console -n $NS --type=merge -p \
-  '{"spec":{"strategy":{"type":"Recreate"},"progressDeadlineSeconds":600}}'
+kubectl patch deployment enlight-console -n $NS --type=json -p='[
+  {"op":"replace","path":"/spec/strategy","value":{"type":"Recreate"}}
+]' 2>/dev/null || true
 kubectl set image deployment/enlight-console console="$IMAGE" -n $NS
 kubectl scale deployment enlight-console -n $NS --replicas=0
 sleep 4

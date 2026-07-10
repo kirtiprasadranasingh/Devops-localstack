@@ -38,8 +38,11 @@ echo "==> 2) RBAC + Recreate strategy"
 kubectl apply -f "${ROOT}/oke/manifests/32-console-rbac.yaml" 2>/dev/null || true
 kubectl patch serviceaccount enlight-console -n "${NS}" --type=merge \
   -p '{"imagePullSecrets":[{"name":"ocir-pull-secret"}]}' 2>/dev/null || true
+kubectl patch deployment enlight-console -n "${NS}" --type=json -p='[
+  {"op":"replace","path":"/spec/strategy","value":{"type":"Recreate"}}
+]' 2>/dev/null || true
 kubectl patch deployment enlight-console -n "${NS}" --type=merge -p \
-  '{"spec":{"strategy":{"type":"Recreate"},"progressDeadlineSeconds":600,"revisionHistoryLimit":2}}'
+  '{"spec":{"progressDeadlineSeconds":600,"revisionHistoryLimit":2}}' 2>/dev/null || true
 
 echo ""
 echo "==> 3) Scale to zero + force-delete stuck pods"
