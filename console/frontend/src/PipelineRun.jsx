@@ -61,7 +61,7 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
   const [error, setError] = useState(null);
   const [starting, setStarting] = useState(!initialId);
   const [startedAt, setStartedAt] = useState(Date.now());
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   const buildDoneAt = useRef(null);
   const logRef = useRef(null);
 
