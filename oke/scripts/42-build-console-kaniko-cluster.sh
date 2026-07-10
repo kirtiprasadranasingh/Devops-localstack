@@ -44,16 +44,24 @@ spec:
             - |
               set -euo pipefail
               echo "==> Clone ${GIT_BRANCH} from GitHub"
-              git clone --depth 1 -b ${GIT_BRANCH} ${GIT_REPO} /workspace
-              test -f /workspace/console/Dockerfile
-              ls -la /workspace/console/
-              echo "==> Kaniko build -> ${IMAGE}"
+              rm -rf /work
+              git clone --depth 1 -b ${GIT_BRANCH} ${GIT_REPO} /work
+              BUILD_CTX=/work/console
+              DOCKERFILE="${BUILD_CTX}/Dockerfile.oke"
+              test -f "${DOCKERFILE}" || DOCKERFILE="${BUILD_CTX}/Dockerfile"
+              test -f "${BUILD_CTX}/backend/requirements.txt"
+              test -d "${BUILD_CTX}/frontend/dist"
+              echo "==> Build context:"
+              ls -la "${BUILD_CTX}/"
+              ls -la "${BUILD_CTX}/backend/"
+              echo "==> Kaniko build -> ${IMAGE} (${DOCKERFILE})"
               export DOCKER_CONFIG=/kaniko/.docker
               /kaniko/executor \
-                --dockerfile=/workspace/console/Dockerfile \
-                --context=/workspace/console \
+                --context="dir://${BUILD_CTX}" \
+                --dockerfile="${DOCKERFILE}" \
                 --destination=${IMAGE} \
                 --cache=false \
+                --use-new-run \
                 --snapshot-mode=redo
               echo "==> DONE ${IMAGE}"
           volumeMounts:
