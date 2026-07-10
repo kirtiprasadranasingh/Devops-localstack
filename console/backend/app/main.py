@@ -18,6 +18,7 @@ from .kestra_client import (
     get_execution,
     get_execution_logs,
     parse_execution_summary,
+    summary_from_kestra_lines,
     get_flow,
     make_client,
     parse_flow_meta,
@@ -140,7 +141,7 @@ async def health() -> dict[str, str]:
         "status": "ok",
         "service": settings.app_name,
         "mode": settings.mode,
-        "console_version": "v27",
+        "console_version": "v28",
     }
 
 
@@ -475,6 +476,14 @@ async def execution_logs(execution_id: str) -> dict[str, Any]:
                     settings.kestra_namespace,
                     execution_id,
                 )
+                if not execution_summary.get("tasks") and kestra_lines:
+                    from_lines = summary_from_kestra_lines(kestra_lines)
+                    if from_lines.get("tasks"):
+                        execution_summary = {
+                            "state": from_lines.get("state") or execution_summary.get("state"),
+                            "tasks": from_lines["tasks"],
+                            "flow_id": execution_summary.get("flow_id"),
+                        }
         except Exception as exc:  # noqa: BLE001
             kestra_error = str(exc)
 

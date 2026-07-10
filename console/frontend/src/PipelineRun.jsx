@@ -41,6 +41,7 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
   const [starting, setStarting] = useState(!initialId);
   const [startedAt, setStartedAt] = useState(Date.now());
   const [, setTick] = useState(0);
+  const buildDoneAt = useRef(null);
   const logRef = useRef(null);
 
   const startPipeline = useCallback(async () => {
@@ -93,8 +94,10 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
               setExecution((prev) => ({
                 execution_id: executionId,
                 flow_id: data.execution.flow_id || prev?.flow_id,
-                state: data.execution.state ?? prev?.state,
-                tasks: data.execution.tasks?.length ? data.execution.tasks : prev?.tasks || [],
+                state: data.execution.state || prev?.state,
+                tasks: data.execution.tasks?.length
+                  ? data.execution.tasks
+                  : prev?.tasks || [],
                 url: prev?.url,
               }));
             }
@@ -114,6 +117,65 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
       clearInterval(id);
     };
   }, [executionId]);
+
+  useEffect(() => {
+    const buildDone = parseLogMilestones(jobLogs).done;
+    if (jobMeta?.status === "complete" && buildDone && !buildDoneAt.current) {
+      buildDoneAt.current = Date.now();
+    }
+  }, [jobMeta?.status, jobLogs]);
+
+  // After K8s build completes, Kestra still runs wait-pipeline (90s) + health — keep syncing.
+  useEffect(() => {
+    if (!executionId) return undefined;
+    if (DONE_STATES.has(execution?.state)) return undefined;
+    if (!buildDoneAt.current) return undefined;
+
+    async function syncCompletion() {
+
+      try {
+        const execRes = await fetch(`/api/executions/${executionId}`);
+        if (execRes.ok) {
+          const data = await execRes.json();
+          if (
+            data.state === "SUCCESS" ||
+            (data.tasks?.length >= 3 &&
+              data.tasks.every((t) => t.state === "SUCCESS"))
+          ) {
+            setExecution(data);
+            return;
+          }
+        }
+      } catch {
+        /* retry */
+      }
+
+      const elapsed = Date.now() - buildDoneAt.current;
+      if (elapsed < 95000) return;
+
+      try {
+        const st = await fetch("/api/status").then((r) => r.json());
+        if (st?.services?.application?.ok) {
+          setExecution({
+            execution_id: executionId,
+            state: "SUCCESS",
+            tasks: [
+              { id: "run-pipeline-job", state: "SUCCESS" },
+              { id: "wait-pipeline", state: "SUCCESS" },
+              { id: "health-after", state: "SUCCESS" },
+              { id: "done", state: "SUCCESS" },
+            ],
+          });
+        }
+      } catch {
+        /* retry */
+      }
+    }
+
+    syncCompletion();
+    const id = setInterval(syncCompletion, 4000);
+    return () => clearInterval(id);
+  }, [executionId, execution?.state, jobLogs]);
 
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 1000);

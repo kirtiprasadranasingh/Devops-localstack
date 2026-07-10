@@ -224,7 +224,7 @@ def parse_execution_summary(data: dict[str, Any] | None) -> dict[str, Any]:
     state = data.get("state") or {}
     current = state.get("current") if isinstance(state, dict) else state
     tasks: list[dict[str, Any]] = []
-    for tr in data.get("taskRunList") or []:
+    for tr in data.get("taskRunList") or data.get("taskRuns") or []:
         tid = tr.get("taskId") or tr.get("id")
         if not tid:
             continue
@@ -252,6 +252,31 @@ def parse_execution_summary(data: dict[str, Any] | None) -> dict[str, Any]:
         "tasks": tasks,
         "flow_id": data.get("flowId"),
     }
+
+
+def summary_from_kestra_lines(lines: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build execution summary from Task / Execution state log lines."""
+    import re
+
+    tasks: list[dict[str, Any]] = []
+    state: str | None = None
+    seen: set[str] = set()
+    for line in lines:
+        msg = (line.get("message") if isinstance(line, dict) else str(line)) or ""
+        if msg.startswith("Execution state:"):
+            state = msg.split(":", 1)[1].strip()
+            continue
+        match = re.match(r"^Task ([^:]+):\s*(\S+)", msg)
+        if not match:
+            continue
+        tid, tstate = match.group(1), match.group(2)
+        if tid in seen:
+            continue
+        seen.add(tid)
+        tasks.append({"id": tid, "state": tstate})
+    if state is None and tasks and all(t.get("state") == "SUCCESS" for t in tasks):
+        state = "SUCCESS"
+    return {"state": state, "tasks": tasks, "flow_id": None}
 
 
 async def trigger_execution(
