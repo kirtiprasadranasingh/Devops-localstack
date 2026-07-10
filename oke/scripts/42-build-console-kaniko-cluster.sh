@@ -47,18 +47,18 @@ spec:
               rm -rf /work
               git clone --depth 1 -b ${GIT_BRANCH} ${GIT_REPO} /work
               BUILD_CTX=/work/console
-              DOCKERFILE="${BUILD_CTX}/Dockerfile.oke"
-              test -f "${DOCKERFILE}" || DOCKERFILE="${BUILD_CTX}/Dockerfile"
-              test -f "${BUILD_CTX}/backend/requirements.txt"
-              test -d "${BUILD_CTX}/frontend/dist"
+              DOCKERFILE="\${BUILD_CTX}/Dockerfile.oke"
+              test -f "\${DOCKERFILE}" || DOCKERFILE="\${BUILD_CTX}/Dockerfile"
+              test -f "\${BUILD_CTX}/backend/requirements.txt"
+              test -d "\${BUILD_CTX}/frontend/dist"
               echo "==> Build context:"
-              ls -la "${BUILD_CTX}/"
-              ls -la "${BUILD_CTX}/backend/"
-              echo "==> Kaniko build -> ${IMAGE} (${DOCKERFILE})"
+              ls -la "\${BUILD_CTX}/"
+              ls -la "\${BUILD_CTX}/backend/"
+              echo "==> Kaniko build -> ${IMAGE} (\${DOCKERFILE})"
               export DOCKER_CONFIG=/kaniko/.docker
               /kaniko/executor \
-                --context="dir://${BUILD_CTX}" \
-                --dockerfile="${DOCKERFILE}" \
+                --context="dir://\${BUILD_CTX}" \
+                --dockerfile="\${DOCKERFILE}" \
                 --destination=${IMAGE} \
                 --cache=false \
                 --use-new-run \
