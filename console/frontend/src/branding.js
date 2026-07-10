@@ -2,7 +2,7 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v31";
+export const CONSOLE_VERSION = "v32";
 
 export const HOME_STEPS = [
   {
@@ -13,7 +13,7 @@ export const HOME_STEPS = [
   {
     step: "2",
     title: "Watch it live",
-    body: "Animated horizontal progress and logs update in real time.",
+    body: "Progress and logs update in real time as each stage completes.",
   },
   {
     step: "3",
@@ -22,8 +22,8 @@ export const HOME_STEPS = [
   },
   {
     step: "4",
-    title: "Client sees the result",
-    body: "The demo app updates with a page proving the deployment worked.",
+    title: "See the result",
+    body: "The application updates with a live health check proving the rollout worked.",
   },
 ];
 
@@ -286,11 +286,19 @@ export function resolvePhases(
   buildDoneAtMs,
   serverPhases
 ) {
+  if (execState === "SUCCESS") {
+    return CLIENT_PIPELINE.map((step) => ({ ...step, status: "success" }));
+  }
+
   if (serverPhases?.length) {
-    return applyServerPhases(
+    const applied = applyServerPhases(
       serverPhases,
       CLIENT_PIPELINE.map((step) => ({ ...step, status: "pending" }))
     );
+    if (applied.every((p) => p.status === "success")) {
+      return applied;
+    }
+    return applied;
   }
 
   const tm = taskMap;

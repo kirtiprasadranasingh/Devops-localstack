@@ -359,15 +359,17 @@ def compute_pipeline_ui(
             ],
         }
 
-    if health == "SUCCESS" or (wait == "SUCCESS" and build_done):
+    if (health == "SUCCESS" or (wait == "SUCCESS" and build_done):
+        verify_status = "success" if health == "SUCCESS" else "running"
         phases = [
             {"id": "trigger", "status": "success"},
             {"id": "build", "status": "success"},
             {"id": "deploy", "status": "success"},
-            {"id": "verify", "status": "running" if health != "SUCCESS" else "success"},
+            {"id": "verify", "status": verify_status},
         ]
-        pct = 92 if health != "SUCCESS" else 100
-        return {"state": "RUNNING", "pct": pct, "tasks": tasks, "phases": phases}
+        pct = 100 if health == "SUCCESS" else 92
+        state = "SUCCESS" if health == "SUCCESS" else "RUNNING"
+        return {"state": state, "pct": pct, "tasks": tasks, "phases": phases}
 
     if wait == "SUCCESS" or git_pushed:
         return {

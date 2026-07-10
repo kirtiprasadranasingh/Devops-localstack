@@ -13,8 +13,35 @@ import {
 } from "./branding";
 
 const DONE_STATES = new Set(["SUCCESS", "FAILED", "KILLED"]);
-const GITOPS_WAIT_MS = 90000;
 const PIPELINE_DONE_MS = 120000;
+
+const PLATFORM_SHORTCUTS = [
+  {
+    id: "app",
+    label: "Live application",
+    desc: "Open the deployed service",
+    icon: "◉",
+    linkKey: "application",
+    phase: "verify",
+  },
+  {
+    id: "gitops",
+    label: "ArgoCD",
+    desc: "GitOps sync & rollout status",
+    icon: "⟳",
+    linkKey: "gitops",
+    phase: "deploy",
+  },
+  {
+    id: "kestra",
+    label: "Kestra pipeline",
+    desc: "Orchestration & task logs",
+    icon: "⚡",
+    linkKey: "kestra",
+    phase: "build",
+    useExecutionUrl: true,
+  },
+];
 
 function mergeExecution(prev, incoming) {
   if (!incoming) return prev;
@@ -44,9 +71,11 @@ function formatElapsed(ms) {
 }
 
 function inferExecState(apiState, taskMap, apiTasks, buildDoneAtMs, serverPct) {
+  if (apiState === "SUCCESS") return "SUCCESS";
   if (apiState && apiState !== "RUNNING") return apiState;
-  if (taskMap.__exec) return taskMap.__exec;
+  if (taskMap.__exec === "SUCCESS") return "SUCCESS";
   if (taskMap.done === "SUCCESS") return "SUCCESS";
+  if (taskMap["health-after"] === "SUCCESS") return "SUCCESS";
   if (taskMap["health-after"] === "SUCCESS" && taskMap["wait-pipeline"] === "SUCCESS") return "SUCCESS";
   const tracked = (apiTasks || []).filter((t) => t.id && t.state);
   if (tracked.length >= 3 && tracked.every((t) => t.state === "SUCCESS")) return "SUCCESS";
@@ -60,7 +89,8 @@ function inferExecState(apiState, taskMap, apiTasks, buildDoneAtMs, serverPct) {
 function ProgressRing({ pct, finished, success }) {
   const r = 54;
   const c = 2 * Math.PI * r;
-  const offset = c - (pct / 100) * c;
+  const displayPct = success ? 100 : pct;
+  const offset = c - (displayPct / 100) * c;
   return (
     <div className="run-ring-wrap">
       <svg className="run-progress-ring" viewBox="0 0 120 120" aria-hidden>
@@ -75,14 +105,37 @@ function ProgressRing({ pct, finished, success }) {
         />
       </svg>
       <div className="run-ring-inner">
-        <span className="run-ring-pct">{success ? "100" : pct}%</span>
+        <span className={`run-ring-pct ${success ? "ok" : ""}`}>{displayPct}%</span>
         <span className="run-ring-label">complete</span>
       </div>
     </div>
   );
 }
 
-export default function PipelineRun({ executionId: initialId, onBack, appUrl }) {
+function ShortcutCard({ item, href, active, done }) {
+  const disabled = !href?.startsWith("http");
+  const cls = `run-shortcut-card ${done ? "done" : active ? "active" : ""} ${disabled ? "disabled" : ""}`;
+  const inner = (
+    <>
+      <span className="run-shortcut-icon" aria-hidden>
+        {item.icon}
+      </span>
+      <div>
+        <strong>{item.label}</strong>
+        <span>{item.desc}</span>
+      </div>
+      {!disabled && <span className="run-shortcut-arrow">→</span>}
+    </>
+  );
+  if (disabled) return <div className={cls}>{inner}</div>;
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className={cls}>
+      {inner}
+    </a>
+  );
+}
+
+export default function PipelineRun({ executionId: initialId, onBack, appUrl, platformLinks = {} }) {
   const cached = initialId ? loadCachedPipeline(initialId) : null;
   const [executionId, setExecutionId] = useState(initialId || null);
   const [execution, setExecution] = useState(
@@ -93,6 +146,7 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
   const [pipelineUi, setPipelineUi] = useState(
     cached ? { state: cached.state, pct: cached.pct, phases: cached.phases } : null
   );
+  const [runLinks, setRunLinks] = useState({});
   const [jobLogs, setJobLogs] = useState("");
   const [kestraLines, setKestraLines] = useState([]);
   const [jobMeta, setJobMeta] = useState(null);
@@ -147,6 +201,7 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
           setKestraLines(data.kestra || []);
           const ui = data.pipeline_ui || {};
           setPipelineUi(ui);
+          if (data.links) setRunLinks(data.links);
           const incoming = {
             execution_id: executionId,
             flow_id: data.execution?.flow_id,
@@ -157,7 +212,7 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
           };
           setExecution((prev) => mergeExecution(prev, incoming));
           if (ui.state === "SUCCESS" || data.execution?.state === "SUCCESS") {
-            cachePipelineState(executionId, ui);
+            cachePipelineState(executionId, { ...ui, state: "SUCCESS", pct: 100 });
           }
         } else if (!cancelled && logRes.status >= 400) {
           setJobMeta({ status: "error", error: `Logs API ${logRes.status}` });
@@ -213,32 +268,34 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
   const success = execState === "SUCCESS";
   const failed = execState === "FAILED" || execState === "KILLED";
 
-  const phases = useMemo(
-    () =>
-      resolvePhases(
-        mergedTasks,
-        execState,
-        milestones,
-        jobMeta,
-        tasks,
-        buildDoneAt.current,
-        pipelineUi?.phases || execution?.phases
-      ),
-    [mergedTasks, execState, milestones, jobMeta, tasks, tick, pipelineUi?.phases, execution?.phases]
-  );
+  const phases = useMemo(() => {
+    const resolved = resolvePhases(
+      mergedTasks,
+      execState,
+      milestones,
+      jobMeta,
+      tasks,
+      buildDoneAt.current,
+      pipelineUi?.phases || execution?.phases
+    );
+    if (success) {
+      return resolved.map((p) => ({ ...p, status: "success" }));
+    }
+    return resolved;
+  }, [mergedTasks, execState, milestones, jobMeta, tasks, tick, pipelineUi?.phases, execution?.phases, success]);
 
   useEffect(() => {
     if (success && executionId) {
       cachePipelineState(executionId, {
         state: "SUCCESS",
         tasks,
-        phases: phases.map((p) => ({ id: p.id, status: p.status })),
+        phases: phases.map((p) => ({ id: p.id, status: "success" })),
         pct: 100,
       });
     }
   }, [success, executionId, tasks, phases]);
 
-  const activePhase = phases.find((p) => p.status === "running");
+  const activePhase = success ? null : phases.find((p) => p.status === "running");
   const pct = success ? 100 : progressPct(phases, execState);
   const liveFeed = useMemo(
     () => buildLiveFeed(kestraLines, jobLogs, tasks, execState, jobMeta),
@@ -246,8 +303,14 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
   );
   const elapsed = formatElapsed(Date.now() - startedAt);
 
+  const phaseStatus = Object.fromEntries(phases.map((p) => [p.id, p.status]));
+  const kestraExecUrl = execution?.url || runLinks.kestra_execution;
+  const resolvedAppUrl = appUrl || runLinks.application || platformLinks.application;
+  const gitopsUrl = runLinks.gitops || platformLinks.gitops;
+  const kestraUiUrl = runLinks.kestra || platformLinks.kestra;
+
   const headline = starting
-    ? "Starting your deployment…"
+    ? "Starting deployment…"
     : success
       ? "Deployment successful"
       : failed
@@ -264,11 +327,13 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
         <span className="run-orb run-orb-c" />
       </div>
 
-      <header className="el-header run-header">
-        <button type="button" className="el-link-btn" onClick={onBack}>
-          ← Back
-        </button>
-        <EnlightLogo />
+      <header className="el-header run-header run-header-v2">
+        <div className="run-header-left">
+          <button type="button" className="el-link-btn run-back-btn" onClick={onBack}>
+            ← Back
+          </button>
+          <EnlightLogo variant="run" />
+        </div>
         <span className="run-badge">
           Live · {CONSOLE_VERSION}
           {!finished && <span className="run-pulse-dot" aria-hidden />}
@@ -291,7 +356,7 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
             </h1>
             <div className="run-meta-row">
               <span className={`run-status-pill ${success ? "ok" : failed ? "fail" : "run"}`}>
-                {execState || (starting ? "STARTING" : "RUNNING")}
+                {success ? "SUCCESS" : execState || (starting ? "STARTING" : "RUNNING")}
               </span>
               <span className="run-elapsed">{elapsed}</span>
             </div>
@@ -333,6 +398,31 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
         </div>
       </section>
 
+      <section className="run-shortcuts">
+        <p className="run-shortcuts-label">PLATFORM LINKS</p>
+        <div className="run-shortcuts-grid">
+          {PLATFORM_SHORTCUTS.map((item) => {
+            const phaseId =
+              item.phase === "verify" ? "verify" : item.phase === "deploy" ? "deploy" : "build";
+            const phaseDone = phaseStatus[phaseId] === "success" || success;
+            const phaseActive = phaseStatus[phaseId] === "running";
+            let href = platformLinks[item.linkKey] || "";
+            if (item.id === "gitops") href = gitopsUrl || href;
+            if (item.id === "kestra") href = kestraExecUrl || kestraUiUrl || href;
+            if (item.id === "app") href = resolvedAppUrl || href;
+            return (
+              <ShortcutCard
+                key={item.id}
+                item={item}
+                href={href}
+                active={phaseActive}
+                done={phaseDone}
+              />
+            );
+          })}
+        </div>
+      </section>
+
       <section className="run-terminal">
         <div className="run-terminal-chrome">
           <span className="run-terminal-dot red" />
@@ -367,13 +457,14 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
       {success && (
         <section className="run-success run-success-v2">
           <div className="run-success-glow" aria-hidden />
+          <p className="run-success-msg">Your application is live and healthy.</p>
           <a
-            href={appUrl || "http://app.144-24-100-85.nip.io/"}
+            href={resolvedAppUrl || "http://app.144-24-100-85.nip.io/"}
             target="_blank"
             rel="noreferrer"
             className="el-btn el-btn-primary el-btn-glow"
           >
-            Open live demo app →
+            Open live application →
           </a>
         </section>
       )}

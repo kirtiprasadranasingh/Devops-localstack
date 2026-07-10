@@ -14,11 +14,15 @@ export default function App() {
   const [page, setPage] = useState(isRunPage() ? "run" : "home");
   const [runId, setRunId] = useState(getRunId());
   const [appUrl, setAppUrl] = useState("");
+  const [platformLinks, setPlatformLinks] = useState({});
 
   useEffect(() => {
     fetch("/api/status")
       .then((r) => r.json())
-      .then((d) => setAppUrl(d.demo?.app_url || d.links?.application || ""))
+      .then((d) => {
+        setAppUrl(d.demo?.app_url || d.links?.application || "");
+        setPlatformLinks(d.links || {});
+      })
       .catch(() => {});
   }, []);
 
@@ -49,7 +53,14 @@ export default function App() {
   }, []);
 
   if (page === "run") {
-    return <PipelineRun executionId={runId} onBack={goHome} appUrl={appUrl} />;
+    return (
+      <PipelineRun
+        executionId={runId}
+        onBack={goHome}
+        appUrl={appUrl}
+        platformLinks={platformLinks}
+      />
+    );
   }
   return <Home onRunDemo={goRun} />;
 }

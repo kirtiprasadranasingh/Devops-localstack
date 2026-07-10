@@ -84,6 +84,29 @@ a:hover {
   flex-shrink: 0;
 }
 
+.el-logo-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(238, 242, 255, 0.95), rgba(224, 231, 255, 0.7));
+  border: 1px solid rgba(88, 80, 236, 0.12);
+  flex-shrink: 0;
+}
+
+.el-logo-run .el-logo-icon-wrap {
+  background: linear-gradient(135deg, rgba(238, 242, 255, 0.85), rgba(255, 255, 255, 0.5));
+  box-shadow: 0 2px 8px rgba(88, 80, 236, 0.08);
+}
+
+.el-logo-run .el-logo-img {
+  width: 32px;
+  height: 32px;
+  mix-blend-mode: multiply;
+}
+
 .el-logo-mark {
   font-family: ui-monospace, monospace;
   font-size: 1rem;
@@ -2080,5 +2103,218 @@ code {
 
   .el-btn-reset {
     width: 100%;
+  }
+}
+
+/* Header actions + compact reset */
+.el-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.el-btn-ghost-reset {
+  background: transparent;
+  color: var(--el-muted);
+  border: 1px solid var(--el-border);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: var(--el-radius-pill);
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.el-btn-ghost-reset:hover:not(:disabled) {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.el-btn-ghost-reset:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.el-reset-toast {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  margin: 0;
+  padding: 0.5rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #047857;
+  background: rgba(236, 253, 245, 0.9);
+  border-bottom: 1px solid #a7f3d0;
+}
+
+.el-footer-links {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.el-footer-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--el-radius-pill);
+}
+
+.el-footer-status.live {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.el-footer-status.idle {
+  background: var(--el-purple-light);
+  color: var(--el-purple);
+}
+
+/* Run header — logo left */
+.run-header-v2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.run-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.run-back-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Platform shortcut cards */
+.run-shortcuts {
+  max-width: 960px;
+  margin: 0 auto 1.75rem;
+  padding: 0 1.5rem;
+}
+
+.run-shortcuts-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--el-muted-light);
+  margin: 0 0 0.75rem;
+  text-align: center;
+}
+
+.run-shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+@media (max-width: 700px) {
+  .run-shortcuts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.run-shortcut-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--el-border);
+  border-radius: 14px;
+  text-decoration: none;
+  color: inherit;
+  transition:
+    transform 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.run-shortcut-card:not(.disabled):hover {
+  transform: translateY(-2px);
+  border-color: rgba(88, 80, 236, 0.35);
+  box-shadow: 0 8px 24px rgba(88, 80, 236, 0.1);
+  text-decoration: none;
+}
+
+.run-shortcut-card.active {
+  border-color: rgba(88, 80, 236, 0.45);
+  background: linear-gradient(135deg, rgba(238, 242, 255, 0.95), rgba(255, 255, 255, 0.85));
+  box-shadow: 0 0 0 1px rgba(88, 80, 236, 0.1);
+}
+
+.run-shortcut-card.done {
+  border-color: rgba(5, 150, 105, 0.25);
+}
+
+.run-shortcut-card.disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.run-shortcut-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--el-purple-light);
+  color: var(--el-purple);
+  font-size: 1rem;
+}
+
+.run-shortcut-card.done .run-shortcut-icon {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.run-shortcut-card strong {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 0.1rem;
+}
+
+.run-shortcut-card span:not(.run-shortcut-icon):not(.run-shortcut-arrow) {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--el-muted);
+  line-height: 1.35;
+}
+
+.run-shortcut-arrow {
+  margin-left: auto;
+  color: var(--el-purple);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.run-ring-pct.ok {
+  color: #059669;
+}
+
+.run-success-msg {
+  margin: 0 0 1rem;
+  color: var(--el-muted);
+  font-size: 0.95rem;
+}
+
+@media (max-width: 600px) {
+  .el-header-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .el-btn-header {
+    width: auto;
   }
 }

@@ -81,30 +81,47 @@ export default function Home({ onRunDemo }) {
         <a className="el-header-brand" href="/">
           <EnlightLogo />
         </a>
-        <button type="button" className="el-btn el-btn-primary el-btn-header el-btn-glow" onClick={onRunDemo}>
-          Run client demo →
-        </button>
+        <div className="el-header-actions">
+          <button
+            type="button"
+            className="el-btn el-btn-ghost-reset"
+            onClick={handleReset}
+            disabled={resetting || !canReset}
+            title={
+              alreadyReset
+                ? "App removed — run the pipeline to redeploy"
+                : "Remove app from cluster (prep for demo)"
+            }
+          >
+            {resetting ? "…" : "↺ Reset"}
+          </button>
+          <button type="button" className="el-btn el-btn-primary el-btn-header el-btn-glow" onClick={onRunDemo}>
+            Run demo →
+          </button>
+        </div>
       </header>
+
+      {resetMsg && <p className="el-reset-toast">{resetMsg}</p>}
 
       <main className="el-main-v2">
         <section className="el-hero-v2">
-          <p className="el-eyebrow">CLIENT DEMO · KUBERNETES · GITOPS</p>
+          <p className="el-eyebrow">KUBERNETES · GITOPS · AUTOMATION</p>
           <h1>
             Ship code to production with <span className="el-accent-text">one click</span>
           </h1>
           <p className="el-lead">
-            One click runs the full pipeline — build, GitOps, deploy, and health check — with a
-            live animated view for your client.
+            Build, deploy, and verify in one flow — with live progress, logs, and platform links
+            as each stage completes.
           </p>
 
           <button type="button" className="el-btn el-btn-primary el-btn-hero el-btn-glow" onClick={onRunDemo}>
-            Launch live demo →
+            Launch deployment →
           </button>
 
           <div className="el-stat-orbit">
             {[
               { value: "~2 min", label: "Full pipeline", icon: "⚡" },
-              { value: "Live logs", label: "Client view", icon: "◎" },
+              { value: "Live logs", label: "Real-time view", icon: "◎" },
               { value: "GitOps", label: "Auto deploy", icon: "⟳" },
               { value: appOk ? "App live ✓" : "Checking…", label: "Status", icon: "◉" },
             ].map((s) => (
@@ -120,8 +137,8 @@ export default function Home({ onRunDemo }) {
         </section>
 
         <section className="el-section el-section-v2">
-          <p className="el-section-label">HOW THE DEMO WORKS</p>
-          <h2 className="el-section-title">Four steps your client will see</h2>
+          <p className="el-section-label">HOW IT WORKS</p>
+          <h2 className="el-section-title">Four stages from code to production</h2>
           <div className="el-bento">
             {HOME_STEPS.map((s, i) => (
               <article key={s.step} className={`el-bento-card el-bento-${i + 1}`}>
@@ -131,42 +148,6 @@ export default function Home({ onRunDemo }) {
                 <span className="el-bento-shine" aria-hidden />
               </article>
             ))}
-          </div>
-        </section>
-
-        <section className="el-section el-section-v2">
-          <p className="el-section-label">DEMO CONTROLS</p>
-          <h2 className="el-section-title">Reset for a clean client run</h2>
-          <div className="el-glass-card el-demo-reset-v2">
-            <div className="el-demo-reset-copy">
-              <p>
-                Remove the demo app from the cluster before a client presentation. Run the pipeline
-                again to build and redeploy automatically.
-              </p>
-              <span
-                className={`el-demo-badge ${demoLive ? "live" : alreadyReset ? "stopped" : "checking"}`}
-              >
-                {demoLive
-                  ? "Demo app is live"
-                  : alreadyReset
-                    ? "Demo app removed — ready for pipeline"
-                    : "Checking demo status…"}
-              </span>
-              {resetMsg && <p className="el-demo-reset-msg">{resetMsg}</p>}
-            </div>
-            <button
-              type="button"
-              className="el-btn el-btn-reset"
-              onClick={handleReset}
-              disabled={resetting || !canReset}
-              title={
-                alreadyReset
-                  ? "App already removed — run the pipeline to redeploy"
-                  : "Remove app from ArgoCD and cluster"
-              }
-            >
-              {resetting ? "Resetting…" : "Reset demo app"}
-            </button>
           </div>
         </section>
 
@@ -200,7 +181,14 @@ export default function Home({ onRunDemo }) {
 
       <footer className="el-footer el-footer-v2">
         <span>© 2026 Enlight Lab · Console {CONSOLE_VERSION}</span>
-        <ExternalLink href={appUrl}>Demo app →</ExternalLink>
+        <div className="el-footer-links">
+          {demoLive !== undefined && (
+            <span className={`el-footer-status ${demoLive ? "live" : "idle"}`}>
+              {demoLive ? "App deployed" : alreadyReset ? "Ready to deploy" : "—"}
+            </span>
+          )}
+          <ExternalLink href={appUrl}>Live app →</ExternalLink>
+        </div>
       </footer>
     </div>
   );

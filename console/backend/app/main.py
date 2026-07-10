@@ -142,7 +142,7 @@ async def health() -> dict[str, str]:
         "status": "ok",
         "service": settings.app_name,
         "mode": settings.mode,
-        "console_version": "v31",
+        "console_version": "v32",
     }
 
 
@@ -500,13 +500,22 @@ async def execution_logs(execution_id: str) -> dict[str, Any]:
         if pipeline_ui.get("tasks"):
             execution_summary["tasks"] = pipeline_ui["tasks"]
 
+    flow_id = execution_summary.get("flow_id")
+    kestra_url = settings.kestra_execution_url(execution_id, flow_id)
+
     return {
         "execution_id": execution_id,
-        "execution": execution_summary,
+        "execution": {**execution_summary, "url": kestra_url},
         "pipeline_ui": pipeline_ui,
         "kestra": kestra_lines,
         "job": job,
         "kestra_error": kestra_error,
+        "links": {
+            "kestra_execution": kestra_url,
+            "kestra": settings.kestra_ui_base + "/ui",
+            "gitops": settings.gitops_url,
+            "application": settings.app_public_url,
+        },
     }
 
 
