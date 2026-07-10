@@ -4,6 +4,7 @@ import {
   buildLiveFeed,
   CONSOLE_VERSION,
   mergeTaskStates,
+  normalizeLogText,
   parseLogMilestones,
   progressPct,
   resolvePhases,
@@ -86,7 +87,7 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl }) 
           if (logRes.ok) {
             const data = await logRes.json();
             setJobMeta(data.job || null);
-            setJobLogs(data.job?.logs || "");
+            setJobLogs(normalizeLogText(data.job?.logs || ""));
             setKestraLines(data.kestra || []);
           } else if (logRes.status >= 400) {
             setJobMeta({ status: "error", error: `Logs API ${logRes.status}` });

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +13,26 @@ _batch_api = None
 _core_api = None
 
 PIPELINE_CONTAINER = "pipeline"
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _normalize_log_text(raw: object) -> str:
+    """Ensure pod log text is a real UTF-8 string with newlines (not bytes repr)."""
+    if raw is None:
+        return ""
+    if isinstance(raw, bytes):
+        text = raw.decode("utf-8", errors="replace")
+    else:
+        text = str(raw)
+        if len(text) >= 3 and text[0] == "b" and text[1] in ("'", '"'):
+            try:
+                evaluated = ast.literal_eval(text)
+                if isinstance(evaluated, bytes):
+                    text = evaluated.decode("utf-8", errors="replace")
+            except (SyntaxError, ValueError):
+                pass
+    text = _ANSI.sub("", text)
+    return text.replace("\\n", "\n") if "\\n" in text and "\n" not in text else text
 
 
 def _init_k8s() -> bool:
@@ -57,7 +79,8 @@ def _read_pod_logs(namespace: str, pod_name: str, tail: int) -> str:
         {"tail_lines": tail},
     ):
         try:
-            return _core_api.read_namespaced_pod_log(pod_name, namespace, **kwargs)
+            raw = _core_api.read_namespaced_pod_log(pod_name, namespace, **kwargs)
+            return _normalize_log_text(raw)
         except ApiException as exc:
             if exc.status == 400 and "container" in kwargs:
                 continue

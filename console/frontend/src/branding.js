@@ -2,7 +2,7 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v25";
+export const CONSOLE_VERSION = "v26";
 
 export const HOME_STEPS = [
   {
@@ -71,8 +71,23 @@ const TASK_LABELS = {
   done: "Complete",
 };
 
+/** Decode API log text — handles legacy bytes repr strings from older console builds. */
+export function normalizeLogText(logs) {
+  if (!logs) return "";
+  let text = typeof logs === "string" ? logs : String(logs);
+  if (text.startsWith("b'") || text.startsWith('b"')) {
+    text = text
+      .replace(/^b['"]/, "")
+      .replace(/['"]$/, "")
+      .replace(/\\n/g, "\n")
+      .replace(/\\t/g, "\t")
+      .replace(/\\xe2\\x80\\x94/g, "—");
+  }
+  return text.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
 export function parseLogMilestones(logs) {
-  const text = logs || "";
+  const text = normalizeLogText(logs);
   return {
     cloned: /Clone GitHub|Cloning into/.test(text),
     gitPushed: /deploy:.*\[kestra pipeline\]|GitOps commit/.test(text),
@@ -84,7 +99,8 @@ export function parseLogMilestones(logs) {
 }
 
 export function filterClientLogs(logs) {
-  if (!logs) return [];
+  const text = normalizeLogText(logs);
+  if (!text) return [];
   const keep = [
     /^==>/,
     /Enlight pipeline/i,
@@ -100,7 +116,7 @@ export function filterClientLogs(logs) {
     /ERROR|Failed/i,
     /git: not found/,
   ];
-  return logs
+  return text
     .split("\n")
     .map((l) => l.trimEnd())
     .filter((line) => line && keep.some((re) => re.test(line)))
@@ -109,10 +125,11 @@ export function filterClientLogs(logs) {
 
 /** Prefer filtered build lines; fall back to a readable tail when filter is empty. */
 export function pickBuildLogLines(logs) {
-  const filtered = filterClientLogs(logs);
+  const text = normalizeLogText(logs);
+  const filtered = filterClientLogs(text);
   if (filtered.length) return filtered;
-  if (!logs) return [];
-  return logs
+  if (!text) return [];
+  return text
     .split("\n")
     .map((l) => l.trimEnd())
     .filter((line) => {
@@ -131,7 +148,7 @@ export function humanizeKestraLine(raw) {
   if (!msg || typeof msg !== "string") return null;
 
   const trimmed = msg.trim();
-  if (!trimmed) return null;
+  if (!trimmed || trimmed === "[]" || trimmed === "{}") return null;
 
   if (trimmed.startsWith("Task ")) return trimmed.replace(/\s+/g, " ");
 

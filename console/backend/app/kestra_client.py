@@ -139,10 +139,10 @@ async def get_execution_logs(
             got = 0
             for raw in response.text.splitlines()[-80:]:
                 raw = raw.strip()
-                if not raw:
+                if not raw or raw in ("[]", "{}", "null"):
                     continue
                 human = _humanize_kestra_log_line(raw)
-                if human:
+                if human and human not in ("[]", "{}"):
                     lines.append({"level": "INFO", "message": human})
                     got += 1
             if got:
@@ -155,6 +155,9 @@ async def get_execution_logs(
 
 def _humanize_kestra_log_line(raw: str) -> str | None:
     """Convert Kestra JSON log line to short client text."""
+    raw = raw.strip()
+    if not raw or raw in ("[]", "{}", "null"):
+        return None
     if raw.startswith("{"):
         try:
             import json
