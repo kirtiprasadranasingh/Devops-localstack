@@ -142,7 +142,7 @@ async def health() -> dict[str, str]:
         "status": "ok",
         "service": settings.app_name,
         "mode": settings.mode,
-        "console_version": "v35",
+        "console_version": "v36",
     }
 
 
@@ -492,8 +492,15 @@ async def execution_logs(execution_id: str) -> dict[str, Any]:
     job_logs_text = job.get("logs") or ""
     if isinstance(job_logs_text, bytes):
         job_logs_text = job_logs_text.decode("utf-8", errors="replace")
+    health_url = f"{settings.app_public_url.rstrip('/')}/health"
+    live_probe = await probe(health_url, "", timeout=4.0)
+    live_health_ok = bool(live_probe.get("ok"))
     pipeline_ui = compute_pipeline_ui(
-        execution_summary, job, str(job_logs_text), kestra_lines
+        execution_summary,
+        job,
+        str(job_logs_text),
+        kestra_lines,
+        live_health_ok=live_health_ok,
     )
     if pipeline_ui.get("state") == "SUCCESS":
         execution_summary["state"] = "SUCCESS"

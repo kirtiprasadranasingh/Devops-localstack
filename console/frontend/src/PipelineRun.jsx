@@ -71,8 +71,9 @@ function formatElapsed(ms) {
   return m > 0 ? `${m}m ${r}s` : `${r}s`;
 }
 
-function inferExecState(apiState, taskMap, apiTasks, buildDoneAtMs, serverPct, lockedSuccess) {
+function inferExecState(apiState, taskMap, apiTasks, buildDoneAtMs, serverPct, lockedSuccess, liveHealthOk) {
   if (lockedSuccess || apiState === "SUCCESS") return "SUCCESS";
+  if (liveHealthOk && serverPct >= 88) return "SUCCESS";
   if (apiState && apiState !== "RUNNING") return apiState;
   if (taskMap.__exec === "SUCCESS") return "SUCCESS";
   if (taskMap.done === "SUCCESS") return "SUCCESS";
@@ -278,7 +279,8 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
         tasks,
         buildDoneAt.current,
         serverPct,
-        lockedSuccess
+        lockedSuccess,
+        pipelineUi?.live_health
       ),
     [
       pipelineUi?.state,
@@ -289,6 +291,7 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
       tick,
       serverPct,
       lockedSuccess,
+      pipelineUi?.live_health,
     ]
   );
 
@@ -310,9 +313,10 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
       milestones,
       jobMeta,
       tasks,
-      buildDoneAt.current,
-      pipelineUi?.phases || execution?.phases
-    );
+        buildDoneAt.current,
+        pipelineUi?.phases || execution?.phases,
+        pipelineUi?.live_health
+      );
   }, [
     mergedTasks,
     execState,

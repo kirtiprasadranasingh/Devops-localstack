@@ -284,8 +284,9 @@ def compute_pipeline_ui(
     job: dict[str, Any],
     logs: str,
     kestra_lines: list[dict[str, Any]] | None = None,
+    live_health_ok: bool = False,
 ) -> dict[str, Any]:
-    """Server-side phase state — Kestra tasks, log lines, and K8s build job."""
+    """Server-side phase state — Kestra tasks, log lines, K8s job, live app probe."""
     import re
 
     tasks: list[dict[str, Any]] = list(execution_summary.get("tasks") or [])
@@ -335,6 +336,7 @@ def compute_pipeline_ui(
         or (health == "SUCCESS" and wait == "SUCCESS")
         or (health == "SUCCESS" and build_done and git_pushed)
         or (health == "SUCCESS" and build_done and wait == "SUCCESS")
+        or (live_health_ok and build_done and git_pushed)
     )
 
     if is_success:
@@ -344,7 +346,13 @@ def compute_pipeline_ui(
             {"id": "deploy", "status": "success"},
             {"id": "verify", "status": "success"},
         ]
-        return {"state": "SUCCESS", "pct": 100, "tasks": tasks, "phases": phases}
+        return {
+            "state": "SUCCESS",
+            "pct": 100,
+            "tasks": tasks,
+            "phases": phases,
+            "live_health": live_health_ok,
+        }
 
     if job_state == "FAILED" or job.get("status") == "failed":
         return {
@@ -381,7 +389,38 @@ def compute_pipeline_ui(
         ]
         return {"state": "SUCCESS", "pct": 100, "tasks": tasks, "phases": phases}
 
-    if wait == "SUCCESS" or git_pushed:
+    # Live app healthy — reflect reality even while Kestra wait-pipeline (90s) runs
+    if live_health_ok and git_pushed:
+        build_status = "success" if build_done else "running"
+        return {
+            "state": "SUCCESS" if build_done else "RUNNING",
+            "pct": 100 if build_done else 88,
+            "tasks": tasks,
+            "phases": [
+                {"id": "trigger", "status": "success"},
+                {"id": "build", "status": build_status},
+                {"id": "deploy", "status": "success"},
+                {"id": "verify", "status": "success"},
+            ],
+            "live_health": True,
+        }
+
+    # GitOps commit pushed — ArgoCD sync starts while Kaniko may still be building
+    if git_pushed and not build_done:
+        return {
+            "state": "RUNNING",
+            "pct": 52,
+            "tasks": tasks,
+            "phases": [
+                {"id": "trigger", "status": "success"},
+                {"id": "build", "status": "running"},
+                {"id": "deploy", "status": "running"},
+                {"id": "verify", "status": "pending"},
+            ],
+            "live_health": live_health_ok,
+        }
+
+    if wait == "SUCCESS" or (git_pushed and build_done):
         return {
             "state": "RUNNING",
             "pct": 78,
@@ -392,6 +431,7 @@ def compute_pipeline_ui(
                 {"id": "deploy", "status": "success"},
                 {"id": "verify", "status": "running"},
             ],
+            "live_health": live_health_ok,
         }
 
     if build_done or job_state == "SUCCESS":

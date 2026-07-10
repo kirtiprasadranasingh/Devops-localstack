@@ -2,7 +2,7 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v35";
+export const CONSOLE_VERSION = "v36";
 
 export const VALUE_PILLARS = [
   {
@@ -361,7 +361,8 @@ export function resolvePhases(
   jobMeta,
   apiTasks,
   buildDoneAtMs,
-  serverPhases
+  serverPhases,
+  liveHealthOk
 ) {
   if (execState === "SUCCESS") {
     return CLIENT_PIPELINE.map((step) => ({ ...step, status: "success" }));
@@ -394,8 +395,26 @@ export function resolvePhases(
     return CLIENT_PIPELINE.map((step) => ({ ...step, status: "success" }));
   }
 
-  if (health === "SUCCESS" && (wait === "SUCCESS" || milestones.gitPushed || jobPhase === "complete")) {
-    return CLIENT_PIPELINE.map((step) => ({ ...step, status: "success" }));
+  if (liveHealthOk && milestones.gitPushed) {
+    return CLIENT_PIPELINE.map((step) => ({
+      ...step,
+      status:
+        step.id === "build" && !milestones.done && jobPhase !== "complete"
+          ? "running"
+          : "success",
+    }));
+  }
+
+  if (milestones.gitPushed && !milestones.done && jobPhase !== "complete") {
+    return CLIENT_PIPELINE.map((step) => ({
+      ...step,
+      status:
+        step.id === "trigger"
+          ? "success"
+          : step.id === "build" || step.id === "deploy"
+            ? "running"
+            : "pending",
+    }));
   }
 
   // K8s build finished — Kestra runs wait-pipeline (90s) then health (matches flow YAML)
@@ -451,14 +470,14 @@ export function resolvePhases(
     health === "SUCCESS" ||
     health === "RUNNING" ||
     done === "SUCCESS" ||
-    (milestones.gitPushed && s.build === "success")
+    milestones.gitPushed
   )
-    s.deploy = "success";
+    s.deploy = milestones.gitPushed && !milestones.done ? "running" : "success";
   else if (s.build === "success") s.deploy = "running";
   else s.deploy = "pending";
 
   if (health === "FAILED" || done === "FAILED") s.verify = "failed";
-  else if (health === "SUCCESS" || done === "SUCCESS") s.verify = "success";
+  else if (health === "SUCCESS" || done === "SUCCESS" || liveHealthOk) s.verify = "success";
   else if (wait === "SUCCESS" || health === "RUNNING" || milestones.gitPushed) s.verify = "running";
   else s.verify = "pending";
 
