@@ -3,7 +3,7 @@
 set -euo pipefail
 
 NS="${NS:-enlight-platform}"
-PREFERRED="${CONSOLE_IMAGE:-ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:v29}"
+PREFERRED="${CONSOLE_IMAGE:-ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:v33}"
 FALLBACK="${CONSOLE_FALLBACK:-ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:v20}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -75,6 +75,13 @@ for i in $(seq 1 36); do
   if kubectl get pods -n "${NS}" -l app=enlight-console 2>/dev/null | grep -qE 'ImagePullBackOff|ErrImagePull'; then
     echo "ERROR: Image pull failed:"
     kubectl describe pod -n "${NS}" -l app=enlight-console | sed -n '/Events:/,$p' | tail -12
+    exit 1
+  fi
+  if kubectl get pods -n "${NS}" -l app=enlight-console 2>/dev/null | grep -qE 'CrashLoopBackOff|Error'; then
+    echo "ERROR: Console pod crashing — logs:"
+    kubectl logs -n "${NS}" -l app=enlight-console --tail=40 2>/dev/null || true
+    echo ""
+    echo "Restore last good image: bash oke/scripts/43-restore-console-v20.sh"
     exit 1
   fi
   sleep 5

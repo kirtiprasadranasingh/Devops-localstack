@@ -2,7 +2,7 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v32";
+export const CONSOLE_VERSION = "v33";
 
 export const HOME_STEPS = [
   {
