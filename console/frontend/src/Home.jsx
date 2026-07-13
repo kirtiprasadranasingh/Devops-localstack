@@ -6,6 +6,7 @@ import {
   HOME_STEPS,
   STATUS_META,
   VALUE_PILLARS,
+  clearPipelineDemoCache,
 } from "./branding";
 
 function ExternalLink({ href, children, className = "" }) {
@@ -91,6 +92,7 @@ export default function Home({ onRunDemo }) {
         throw new Error(data.detail?.error || data.detail?.message || JSON.stringify(data.detail));
       }
       setResetMsg(data.message || "Demo app reset.");
+      clearPipelineDemoCache();
       await fetchStatus();
     } catch (e) {
       setError(e.message);
@@ -126,7 +128,7 @@ export default function Home({ onRunDemo }) {
             {resetting ? "…" : "↺ Reset"}
           </button>
           <button type="button" className="el-btn el-btn-primary el-btn-header el-btn-glow" onClick={onRunDemo}>
-            View pipeline →
+            {demoLive ? "View deployment →" : "Run pipeline →"}
           </button>
         </div>
       </header>
@@ -146,7 +148,7 @@ export default function Home({ onRunDemo }) {
           </p>
 
           <button type="button" className="el-btn el-btn-primary el-btn-hero el-btn-glow" onClick={onRunDemo}>
-            Explore the pipeline →
+            {demoLive ? "View live deployment →" : "Run pipeline →"}
           </button>
 
           <div className="el-stat-orbit">

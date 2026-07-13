@@ -8,6 +8,7 @@ import {
   CONSOLE_VERSION,
   getPhaseActivity,
   loadCachedPipeline,
+  loadLastSuccess,
   mergePipelineUi,
   mergeTaskStates,
   normalizeLogText,
@@ -15,8 +16,6 @@ import {
   progressPct,
   resolvePhases,
 } from "./branding";
-
-const DONE_STATES = new Set(["SUCCESS", "FAILED", "KILLED"]);
 
 const PLATFORM_SHORTCUTS = [
   {
@@ -143,15 +142,28 @@ function ShortcutCard({ item, href, active, done }) {
 }
 
 export default function PipelineRun({ executionId: initialId, onBack, appUrl, platformLinks = {} }) {
-  const cached = initialId ? loadCachedPipeline(initialId) : null;
-  const [executionId, setExecutionId] = useState(initialId || null);
+  const lastSuccess = !initialId ? loadLastSuccess() : null;
+  const cached = initialId
+    ? loadCachedPipeline(initialId)
+    : lastSuccess
+      ? {
+          state: "SUCCESS",
+          tasks: [],
+          phases: lastSuccess.phases,
+          pct: 100,
+          durationMs: lastSuccess.durationMs,
+          finishedAt: lastSuccess.finishedAt,
+        }
+      : null;
+
+  const [executionId, setExecutionId] = useState(initialId || lastSuccess?.executionId || null);
   const [execution, setExecution] = useState(
     cached
-      ? { state: cached.state, tasks: cached.tasks, phases: cached.phases }
+      ? { state: cached.state, tasks: cached.tasks || [], phases: cached.phases }
       : null
   );
   const [pipelineUi, setPipelineUi] = useState(
-    cached ? { state: cached.state, pct: cached.pct, phases: cached.phases } : null
+    cached ? { state: cached.state, pct: cached.pct ?? 100, phases: cached.phases } : null
   );
   const [lockedSuccess, setLockedSuccess] = useState(cached?.state === "SUCCESS");
   const [runLinks, setRunLinks] = useState({});
@@ -160,28 +172,98 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
   const [jobMeta, setJobMeta] = useState(null);
   const [error, setError] = useState(null);
   const [starting, setStarting] = useState(false);
+  const [demoLive, setDemoLive] = useState(null);
   const [startedAt, setStartedAt] = useState(() => {
-    if (initialId) {
+    const id = initialId || lastSuccess?.executionId;
+    if (id) {
       try {
-        const stored = sessionStorage.getItem(`el-started-${initialId}`);
+        const stored = sessionStorage.getItem(`el-started-${id}`);
         if (stored) return Number(stored);
       } catch {
         /* private mode */
       }
     }
+    if (lastSuccess?.durationMs && lastSuccess?.finishedAt) {
+      return lastSuccess.finishedAt - lastSuccess.durationMs;
+    }
     return Date.now();
+  });
+  const [finishedAt, setFinishedAt] = useState(() => {
+    if (cached?.state === "SUCCESS" || cached?.state === "FAILED") {
+      return cached.finishedAt || Date.now();
+    }
+    const id = initialId || lastSuccess?.executionId;
+    if (id) {
+      try {
+        const stored = sessionStorage.getItem(`el-finished-${id}`);
+        if (stored) return Number(stored);
+      } catch {
+        /* private mode */
+      }
+    }
+    return null;
   });
   const [tick, setTick] = useState(0);
   const buildDoneAt = useRef(null);
   const logRef = useRef(null);
+  const restoredDeployed = Boolean(
+    !initialId && lastSuccess?.executionId && cached?.state === "SUCCESS"
+  );
 
-  const idle = !executionId && !starting;
+  // Idle = ready to start only when app is NOT deployed (after reset).
+  const idle = !executionId && !starting && demoLive === false;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/status")
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        const live = d.demo?.demo_live === true;
+        setDemoLive(live);
+        if (live && !initialId) {
+          // App still deployed — keep green completed view (never idle Run)
+          setLockedSuccess(true);
+          if (!lastSuccess) {
+            const done = Date.now();
+            setStartedAt(done - 120000);
+            setFinishedAt(done);
+            setPipelineUi({
+              state: "SUCCESS",
+              pct: 100,
+              phases: CLIENT_PIPELINE.map((p) => ({ id: p.id, status: "success" })),
+            });
+            setExecution({
+              state: "SUCCESS",
+              tasks: [],
+              phases: CLIENT_PIPELINE.map((p) => ({ id: p.id, status: "success" })),
+            });
+          } else {
+            setFinishedAt((prev) => prev || lastSuccess.finishedAt || Date.now());
+          }
+        } else if (!live && !initialId) {
+          // After reset: clear sticky success and show Run pipeline
+          setExecutionId(null);
+          setLockedSuccess(false);
+          setExecution(null);
+          setPipelineUi(null);
+          setFinishedAt(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDemoLive(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialId]);
 
   const startPipeline = useCallback(async () => {
     setStarting(true);
     setError(null);
     const now = Date.now();
     setStartedAt(now);
+    setFinishedAt(null);
     buildDoneAt.current = null;
     setLockedSuccess(false);
     try {
@@ -199,6 +281,7 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
       setExecutionId(data.execution_id);
       try {
         sessionStorage.setItem(`el-started-${data.execution_id}`, String(now));
+        sessionStorage.removeItem(`el-finished-${data.execution_id}`);
       } catch {
         /* private mode */
       }
@@ -211,7 +294,7 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
   }, []);
 
   useEffect(() => {
-    if (!executionId) return undefined;
+    if (!executionId || lockedSuccess) return undefined;
     let cancelled = false;
 
     async function poll() {
@@ -254,7 +337,7 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
       cancelled = true;
       clearInterval(id);
     };
-  }, [executionId]);
+  }, [executionId, lockedSuccess]);
 
   useEffect(() => {
     const buildDone = parseLogMilestones(jobLogs).done;
@@ -262,11 +345,6 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
       if (!buildDoneAt.current) buildDoneAt.current = Date.now();
     }
   }, [jobMeta?.status, jobLogs]);
-
-  useEffect(() => {
-    const id = setInterval(() => setTick((n) => n + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -340,9 +418,30 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
     ]
   );
 
-  const success = lockedSuccess || pacedAllSuccess;
+  const success = lockedSuccess || pacedAllSuccess || (demoLive === true && restoredDeployed);
   const failed = execState === "FAILED" || execState === "KILLED";
   const finished = success || failed;
+
+  useEffect(() => {
+    if (finished) return undefined;
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [finished]);
+
+  // Freeze wall-clock when pipeline completes
+  useEffect(() => {
+    if ((success || failed) && !finishedAt) {
+      const now = Date.now();
+      setFinishedAt(now);
+      if (executionId) {
+        try {
+          sessionStorage.setItem(`el-finished-${executionId}`, String(now));
+        } catch {
+          /* private mode */
+        }
+      }
+    }
+  }, [success, failed, finishedAt, executionId]);
 
   useEffect(() => {
     if (pacedAllSuccess && !lockedSuccess) setLockedSuccess(true);
@@ -350,14 +449,17 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
 
   useEffect(() => {
     if (success && executionId) {
+      const durationMs = Math.max(0, (finishedAt || Date.now()) - startedAt);
       cachePipelineState(executionId, {
         state: "SUCCESS",
         tasks,
         phases: phases.map((p) => ({ id: p.id, status: "success" })),
         pct: 100,
+        durationMs,
+        finishedAt: finishedAt || Date.now(),
       });
     }
-  }, [success, executionId, tasks, phases]);
+  }, [success, executionId, tasks, phases, finishedAt, startedAt]);
 
   const activePhase = success ? null : phases.find((p) => p.status === "running");
   // Percent follows paced phases only — never jump to 100 while Health is still spinning.
@@ -374,7 +476,8 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
     () => buildLiveFeed(kestraLines, jobLogs, tasks, execState, jobMeta),
     [kestraLines, jobLogs, tasks, execState, jobMeta]
   );
-  const elapsed = formatElapsed(Date.now() - startedAt);
+  const elapsedMs = Math.max(0, (finished && finishedAt ? finishedAt : Date.now()) - startedAt);
+  const elapsed = formatElapsed(elapsedMs);
 
   const phaseStatus = Object.fromEntries(phases.map((p) => [p.id, p.status]));
   const kestraExecUrl = execution?.url || runLinks.kestra_execution;
@@ -382,7 +485,12 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
   const gitopsUrl = runLinks.gitops || platformLinks.gitops;
   const kestraUiUrl = runLinks.kestra || platformLinks.kestra;
 
-  const headline = idle
+  const checkingDeploy = demoLive === null && !executionId && !starting && !lockedSuccess;
+  const showIdle = idle && !checkingDeploy && !lockedSuccess;
+
+  const headline = checkingDeploy
+    ? "Checking deployment…"
+    : showIdle
     ? "Ready to deploy"
     : starting
       ? "Starting deployment…"
@@ -411,7 +519,7 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
         </div>
         <span className="run-badge">
           Live · {CONSOLE_VERSION}
-          {!finished && !idle && <span className="run-pulse-dot" aria-hidden />}
+          {!finished && !showIdle && !checkingDeploy && <span className="run-pulse-dot" aria-hidden />}
         </span>
       </header>
 
@@ -422,7 +530,15 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
         </div>
       )}
 
-      {idle ? (
+      {checkingDeploy ? (
+        <section className="run-idle">
+          <div className="run-idle-inner">
+            <p className="run-eyebrow">DEPLOYMENT PIPELINE</p>
+            <h1>Checking cluster…</h1>
+            <p className="run-idle-lead">Looking up whether the demo app is already deployed.</p>
+          </div>
+        </section>
+      ) : showIdle ? (
         <section className="run-idle">
           <div className="run-idle-inner">
             <p className="run-eyebrow">DEPLOYMENT PIPELINE</p>

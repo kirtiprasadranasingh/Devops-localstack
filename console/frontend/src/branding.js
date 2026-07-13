@@ -2,7 +2,7 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v39";
+export const CONSOLE_VERSION = "v40";
 
 /** Minimum elapsed time before each phase can show success (demo pacing). */
 export const DEMO_PACE_MS = {
@@ -200,11 +200,26 @@ export function cachePipelineState(execId, payload) {
     tasks: payload.tasks || [],
     phases: payload.phases || [],
     pct: payload.pct,
+    durationMs: payload.durationMs,
+    finishedAt: payload.finishedAt || Date.now(),
     savedAt: Date.now(),
   });
   try {
     sessionStorage.setItem(`el-pipeline-${execId}`, data);
     localStorage.setItem(`el-pipeline-${execId}`, data);
+    if (payload.state === "SUCCESS") {
+      localStorage.setItem(
+        "el-last-success",
+        JSON.stringify({
+          executionId: execId,
+          durationMs: payload.durationMs,
+          finishedAt: payload.finishedAt || Date.now(),
+          phases: payload.phases || [],
+          pct: 100,
+          state: "SUCCESS",
+        })
+      );
+    }
   } catch {
     /* private mode */
   }
@@ -219,6 +234,38 @@ export function loadCachedPipeline(execId) {
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
+  }
+}
+
+export function loadLastSuccess() {
+  try {
+    const raw = localStorage.getItem("el-last-success");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Clear completed-run cache after demo reset so idle "Run pipeline" shows again. */
+export function clearPipelineDemoCache() {
+  try {
+    localStorage.removeItem("el-last-success");
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith("el-pipeline-") || k.startsWith("el-started-") || k.startsWith("el-finished-"))) {
+        keys.push(k);
+      }
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const k = sessionStorage.key(i);
+      if (k && (k.startsWith("el-pipeline-") || k.startsWith("el-started-") || k.startsWith("el-finished-"))) {
+        sessionStorage.removeItem(k);
+      }
+    }
+  } catch {
+    /* private mode */
   }
 }
 
