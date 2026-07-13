@@ -143,7 +143,7 @@ export default function Home({ onRunDemo }) {
           </h1>
           <p className="el-lead">
             Enlight Lab DevOps Local Stack runs entirely on your Kubernetes cluster — Kestra,
-            ArgoCD, Kaniko, and GitOps you operate and own. No dependency on a proprietary
+            ArgoCD, BuildKit, and GitOps you operate and own. No dependency on a proprietary
             cloud deploy platform; portable to any K8s environment.
           </p>
 

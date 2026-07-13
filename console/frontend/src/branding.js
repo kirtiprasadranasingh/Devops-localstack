@@ -2,7 +2,7 @@
 
 export const COMPANY_NAME = "Enlight Lab";
 export const APP_NAME = "Enlight Lab";
-export const CONSOLE_VERSION = "v40";
+export const CONSOLE_VERSION = "v41";
 
 /** Minimum elapsed time before each phase can show success (demo pacing). */
 export const DEMO_PACE_MS = {
@@ -18,7 +18,7 @@ export const PHASE_ACTIVITY = {
   trigger: "Deployment request received on your cluster",
   build: [
     "Cloning repository from GitHub…",
-    "Kaniko build job scheduled on Kubernetes…",
+    "BuildKit build job scheduled on Kubernetes…",
     "Installing dependencies inside the cluster…",
     "Packaging and pushing image to registry…",
   ],
@@ -103,7 +103,7 @@ export const HOME_STEPS = [
   {
     step: "2",
     title: "Build with open tooling",
-    body: "Kaniko builds the container image inside the cluster and pushes to your registry (OCIR).",
+    body: "BuildKit builds the container image inside the cluster and pushes to your registry (OCIR).",
   },
   {
     step: "3",
@@ -133,7 +133,7 @@ export const CLIENT_PIPELINE = [
     kestraTasks: ["run-pipeline-job"],
     label: "Build",
     short: "Build",
-    clientLine: "Kaniko builds the app image",
+    clientLine: "BuildKit builds the app image",
     icon: "2",
   },
   {
@@ -185,8 +185,8 @@ export function parseLogMilestones(logs) {
   return {
     cloned: /Clone GitHub|Cloning into/.test(text),
     gitPushed: /deploy:.*\[kestra pipeline\]|GitOps commit/.test(text),
-    kanikoStarted: /Kaniko build/.test(text),
-    imagePushed: /Pushed ap-mumbai|DONE ap-mumbai/.test(text),
+    kanikoStarted: /Kaniko build|BuildKit build/.test(text),
+    imagePushed: /Pushed ap-mumbai|DONE ap-mumbai|exporting to image/.test(text),
     done: /DONE ap-mumbai/.test(text),
     failed: /git: not found|ERROR:|Failed/.test(text),
   };
@@ -316,7 +316,7 @@ export function filterClientLogs(logs) {
     /GitOps commit/,
     /\[main /,
     /deploy:/,
-    /Kaniko build/i,
+    /Kaniko build|BuildKit build/i,
     /^DONE /,
     /INFO\[/,
     /pip install/,
@@ -343,7 +343,7 @@ export function pickBuildLogLines(logs) {
     .filter((line) => {
       if (!line || line.length > 220) return false;
       if (line.startsWith("==>")) return true;
-      if (/Clone|Kaniko|GitOps|deploy:|DONE |pip install|Pushed |INFO\[|ERROR/i.test(line))
+      if (/Clone|Kaniko|BuildKit|GitOps|deploy:|DONE |pip install|Pushed |INFO\[|ERROR|exporting to image|pushing/i.test(line))
         return true;
       return false;
     })

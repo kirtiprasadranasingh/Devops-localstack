@@ -180,7 +180,7 @@ def reset_demo_app(github_repo: str) -> dict[str, Any]:
         if not state.get("deployment_present") and not state.get("argocd_app"):
             return {
                 "ok": True,
-                "message": "Demo app removed. Run the pipeline to build with Kaniko and redeploy.",
+                "message": "Demo app removed. Run the pipeline to build with BuildKit and redeploy.",
                 **state,
             }
 

@@ -67,7 +67,7 @@ spec:
             - name: REGISTRY_URL
               value: https://ap-mumbai-1.ocir.io
             - name: PIPELINE_IMAGE
-              value: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v9
+              value: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v10
           resources:
             requests:
               cpu: 50m

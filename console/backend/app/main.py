@@ -37,7 +37,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-PIPELINE_IMAGE_V9 = "ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v9"
+PIPELINE_IMAGE_V10 = "ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v10"
+PIPELINE_IMAGE_V9 = PIPELINE_IMAGE_V10  # alias for older callers
 K8S_DEMO_NAMESPACE = "enlight-platform"
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
@@ -142,7 +143,7 @@ async def health() -> dict[str, str]:
         "status": "ok",
         "service": settings.app_name,
         "mode": settings.mode,
-        "console_version": "v40",
+        "console_version": "v41",
     }
 
 
@@ -251,7 +252,7 @@ async def platform_status() -> dict[str, Any]:
             "uses_dagger": settings.uses_dagger,
             "build_engine": settings.build_engine if settings.mode == "oke" else None,
             "build_note": (
-                "Kaniko builds the image inside a Kubernetes Job, pushes to the registry, "
+                "BuildKit builds the image inside a Kubernetes Job, pushes to the registry, "
                 "and ArgoCD deploys the GitOps manifest to the cluster."
                 if settings.mode == "oke"
                 and settings.kestra_flow_id == "oke-dagger-gitops-pipeline"

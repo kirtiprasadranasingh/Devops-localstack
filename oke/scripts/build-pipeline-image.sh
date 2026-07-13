@@ -3,9 +3,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-IMAGE="${PIPELINE_IMAGE:-ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v1}"
+IMAGE="${PIPELINE_IMAGE:-ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v10}"
 
-echo "==> Build ${IMAGE}"
+echo "==> Build ${IMAGE} (BuildKit-based pipeline runner)"
 docker build -t "${IMAGE}" "${ROOT}/oke/pipeline-runner"
 docker push "${IMAGE}"
-echo "Done. Pipeline image ready for oke-dagger-gitops-pipeline"
+echo "Done. Pipeline image ready for oke-dagger-gitops-pipeline (BuildKit)"

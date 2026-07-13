@@ -178,7 +178,7 @@ def _humanize_kestra_log_line(raw: str) -> str | None:
                 k in msg
                 for k in (
                     "Clone",
-                    "Kaniko",
+                    "BuildKit",
                     "GitOps",
                     "deploy:",
                     "DONE",
@@ -405,7 +405,7 @@ def compute_pipeline_ui(
             "live_health": True,
         }
 
-    # GitOps commit pushed — ArgoCD sync starts while Kaniko may still be building
+    # GitOps commit pushed — ArgoCD sync starts while BuildKit may still be building
     if git_pushed and not build_done:
         return {
             "state": "RUNNING",

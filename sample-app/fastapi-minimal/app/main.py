@@ -89,7 +89,7 @@ def deploy_info() -> JSONResponse:
     return JSONResponse(
         {
             "pipeline": "oke-dagger-gitops-pipeline",
-            "build_engine": "Kaniko",
+            "build_engine": "BuildKit",
             "gitops": "ArgoCD",
             "orchestrator": "Kestra",
             "registry": "OCIR",

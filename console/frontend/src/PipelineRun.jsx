@@ -545,7 +545,7 @@ export default function PipelineRun({ executionId: initialId, onBack, appUrl, pl
             <h1>Self-hosted delivery pipeline</h1>
             <p className="run-idle-lead">
               This workflow runs on your Kubernetes cluster using open components — Kestra
-              orchestration, Kaniko builds, GitOps via ArgoCD, and health verification on your
+              orchestration, BuildKit builds, GitOps via ArgoCD, and health verification on your
               infrastructure. The live view paces each phase (~2 minutes) so you can follow
               build, deploy, and verify in real time.
             </p>

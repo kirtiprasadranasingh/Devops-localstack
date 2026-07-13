@@ -2,14 +2,14 @@ id: oke-dagger-gitops-pipeline
 namespace: main
 
 description: |
-  Full OKE pipeline — Kaniko build in-cluster, OCIR push, GitOps commit, ArgoCD sync, health check.
+  Full OKE pipeline — BuildKit build in-cluster, OCIR push, GitOps commit, ArgoCD sync, health check.
   Secrets: GITHUB_TOKEN, OCIR_USERNAME, OCIR_TOKEN
-  Requires image: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v9
+  Requires image: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v10
 
 labels:
   env: oke
   project: enlight-lab
-  flow-version: "2026-07-10-v5"
+  flow-version: "2026-07-13-v6"
 
 inputs:
   - id: git_branch
@@ -29,7 +29,7 @@ inputs:
     defaults: enlight-fastapi
   - id: pipeline_image
     type: STRING
-    defaults: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v9
+    defaults: ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:v10
   - id: gitops_manifest
     type: STRING
     defaults: oke/gitops/apps/fastapi/deployment.yaml
@@ -74,12 +74,16 @@ tasks:
               - name: pipeline
                 image: {{ inputs.pipeline_image }}
                 imagePullPolicy: Always
+                securityContext:
+                  privileged: true
                 command:
                   - /bin/bash
                   - /pipeline/run.sh
                 env:
                   - name: DOCKER_CONFIG
-                    value: /kaniko/.docker
+                    value: /root/.docker
+                  - name: BUILDKIT_HOST
+                    value: unix:///run/buildkit/buildkitd.sock
                   - name: GIT_BRANCH
                     value: "{{ inputs.git_branch }}"
                   - name: GIT_REPO
@@ -96,7 +100,7 @@ tasks:
                     value: "{{ secret('GITHUB_TOKEN') }}"
                 volumeMounts:
                   - name: ocir-docker-config
-                    mountPath: /kaniko/.docker
+                    mountPath: /root/.docker
                     readOnly: true
                 resources:
                   requests:
