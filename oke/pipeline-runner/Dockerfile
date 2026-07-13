@@ -1,6 +1,6 @@
 # Enlight Lab pipeline runner — BuildKit in-cluster builds (Kaniko replacement).
 # BuildKit is actively maintained (moby/buildkit); Google Kaniko is archived.
-FROM moby/buildkit:v0.20.2
+FROM docker.io/moby/buildkit:v0.20.2
 
 USER root
 RUN apk add --no-cache bash git sed ca-certificates coreutils jq \

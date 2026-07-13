@@ -5,7 +5,7 @@ set -euo pipefail
 NS="${NS:-enlight-platform}"
 TAG="${CONSOLE_TAG:-v41}"
 IMAGE="ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-console:${TAG}"
-BUILDER="${CONSOLE_BUILDER:-moby/buildkit:v0.20.2}"
+BUILDER="${CONSOLE_BUILDER:-docker.io/moby/buildkit:v0.20.2}"
 GIT_REPO="${GIT_REPO:-https://github.com/kirtiprasadranasingh/Devops-localstack.git}"
 # Use CONSOLE_GIT_BRANCH — not GIT_BRANCH (often set to main/master for pipeline runs)
 BRANCH="${CONSOLE_GIT_BRANCH:-github-clean}"

@@ -9,7 +9,7 @@ IMAGE="ap-mumbai-1.ocir.io/bmitpaosivqx/enlight-pipeline:${TAG}"
 GIT_REPO="${GIT_REPO:-https://github.com/kirtiprasadranasingh/Devops-localstack.git}"
 BRANCH="${PIPELINE_GIT_BRANCH:-github-clean}"
 JOB="enlight-pipeline-build-${TAG//./-}"
-BUILDER="moby/buildkit:v0.20.2"
+BUILDER="docker.io/moby/buildkit:v0.20.2"
 
 echo "=========================================="
 echo " Build pipeline image ${TAG} (BuildKit)"
